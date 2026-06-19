@@ -1,0 +1,20 @@
+# TeamVault repos.yaml — project repos bound to this space.
+#
+# Each entry: the git remote URL of a project repo (NOT a TeamVault clone).
+# When a dev runs Claude Code from inside a bound project repo, the sidecar
+# routes queries to this space.
+#
+# Entries are added via `/teamvault-bind` (writes to this file, opens a PR if
+# `space.yaml::compliance: true`). Direct push allowed for kb/ entries; PR
+# required for repos.yaml + config/.
+#
+# Format: a YAML list. The file may start empty (no items below); append entries
+# below the marker line. Empty files parse as null and are treated as [].
+#
+# ---- BIND ENTRIES BELOW (one per project repo) ----
+#
+# Example:
+# - remote: https://github.com/your-org/example-repo
+#   workspace: default
+# - remote: git@github.com:your-org/another-repo.git
+#   workspace: default

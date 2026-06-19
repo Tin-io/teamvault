@@ -1,0 +1,112 @@
+name: teamvault-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Disable on fork PRs: a fork-PR can modify sidecar/pack_runtime.py and would then
+    # run attacker-controlled code with `pull-requests: write` permission, exfiltrating
+    # GITHUB_TOKEN via the comment body. First-party PRs only for v0.0.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout space repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install sidecar (pack-runtime deps only)
+        run: |
+          python -m pip install --upgrade pip
+          # Pack runtime + YAML parsing only — embeddings not needed for PR review.
+          pip install pyyaml python-frontmatter
+
+      - name: Compute diff
+        id: diff
+        # Assign GitHub context to env first; do NOT interpolate `${{ ... }}` directly
+        # inside `run:` shell lines (GitHub's recommended idiom for PR-context safety).
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git diff "origin/$BASE_REF...HEAD" > /tmp/pr.diff
+          echo "diff_lines=$(wc -l < /tmp/pr.diff)" >> "$GITHUB_OUTPUT"
+
+      - name: Run pack-runtime review
+        id: review
+        run: |
+          python -c "
+          import sys, json
+          from pathlib import Path
+          # Ensure the sidecar package is importable from this checkout
+          sys.path.insert(0, str(Path.cwd()))
+          from sidecar import pack_runtime
+          diff = Path('/tmp/pr.diff').read_text()
+          runtime = pack_runtime.PackRuntime(Path.cwd())
+          verdict = runtime.fan_out_review(diff)
+          out = {
+              'overall': verdict.overall,
+              'individual': [
+                  {
+                      'pack': v.pack,
+                      'agent': v.agent,
+                      'mode': v.mode,
+                      'pass_or_fail': v.pass_or_fail,
+                      'message': v.message,
+                  }
+                  for v in verdict.individual
+              ],
+          }
+          Path('/tmp/verdict.json').write_text(json.dumps(out, indent=2))
+          print(json.dumps(out, indent=2))
+          " | tee /tmp/verdict.txt
+
+      - name: Comment verdict on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const verdict = JSON.parse(fs.readFileSync('/tmp/verdict.json', 'utf8'));
+            const rows = verdict.individual.map(v =>
+              `| ${v.pack} | ${v.agent} | ${v.mode} | ${v.pass_or_fail === 'pass' ? '✅' : '❌'} | ${v.message} |`
+            ).join('\n');
+            const body = [
+              `## TeamVault review — **${verdict.overall.toUpperCase()}**`,
+              '',
+              '| Pack | Reviewer | Mode | Status | Message |',
+              '|---|---|---|---|---|',
+              rows,
+              '',
+              verdict.overall === 'block'
+                ? '> ❌ A blocking reviewer failed. PR cannot merge until resolved.'
+                : '> ✅ All blocking reviewers passed. Advisory failures are non-blocking.'
+            ].join('\n');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Fail job if overall is block
+        run: |
+          OVERALL=$(jq -r '.overall' /tmp/verdict.json)
+          if [ "$OVERALL" = "block" ]; then
+            echo "TeamVault review BLOCKED — see PR comment for details."
+            exit 1
+          fi
+          echo "TeamVault review passed."

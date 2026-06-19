@@ -1,0 +1,23 @@
+name: jira-linkage
+version: 0.1.0
+description: >
+  Advisory pack for teams on Jira (atlassian.net). Two contributions:
+  (1) PR linkage check — confirms every PR references a Jira ticket
+  (CU-XXX form or atlassian.net URL); (2) Jira comment conventions —
+  reference document for any agent composing Jira content (TLDR-first,
+  minimal @-mentions, "For Claude" sections, no deflection,
+  codebase-grounded). Useful for SOC 2 evidence + consistent Jira
+  hygiene across agent-authored comments.
+
+knowledge_topics:
+  - ticket-trail
+  - work-tracking
+  - soc2-evidence
+
+contributions:
+  agents:
+    - path: agents/jira-linkage-reviewer.md
+    - path: agents/jira-comment-conventions.md
+  reviewers:
+    - agent: jira-linkage-reviewer
+      mode: advisory

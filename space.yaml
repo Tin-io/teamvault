@@ -1,0 +1,14 @@
+# TeamVault space configuration
+#
+# A space is one team's instance. This file is the contract for what packs
+# are enabled, what compliance level applies, and how auto-deploy behaves.
+#
+# THIS FILE IS THE TEMPLATE. Teams should fork and customize.
+
+name: teamvault-template
+description: TeamVault master template — fork to create your team space.
+compliance: false           # true → auto-deploy disabled; pack updates require /teamvault-apply-pack-update
+enabled_packs:
+  - hipaa-reference         # example; remove if your team doesn't handle PHI
+  - clickup-linkage         # example; remove if your team doesn't use ClickUp
+auto_deploy: true           # automatically apply pack updates within ~60s of git pull

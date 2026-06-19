@@ -1,0 +1,25 @@
+name: hipaa-reference
+version: 0.1.0
+description: >
+  HIPAA PHI detection reference pack. Detects common PHI patterns (MRN, SSN, NPI,
+  DOB-with-prefix) in PRs and at publish time. REFERENCE PACK ONLY — not a complete
+  HIPAA compliance control. See LICENSE for disclaimer.
+
+knowledge_topics:
+  - hipaa
+  - phi
+  - safe-harbor
+  - de-identification
+  - audit-log
+  - phi-cryptography
+  - identifier-derivation
+
+contributions:
+  agents:
+    - path: agents/hipaa-reviewer.md
+  scrubbers:
+    - type: regex
+      file: scrubbers/phi_patterns.yaml
+  reviewers:
+    - agent: hipaa-reviewer
+      mode: blocking

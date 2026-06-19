@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+venv/
+env/
+.env
+
+# Sidecar runtime state (TEAMVAULT_HOME)
+.teamvault-test/
+.teamvault-dev/
+
+# Agent harness state (per-developer, not tracked in repo)
+.omc/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
+logs/
+
+# Build sandbox
+.build/sandbox/
+
+# Internal build narratives — local only, never shipped (like HANDOFF.md below)
+.build/JOURNAL.md
+.build/PLAN-*.md
+
+# Per-developer state-of-the-build doc (not tracked in repo)
+HANDOFF.md

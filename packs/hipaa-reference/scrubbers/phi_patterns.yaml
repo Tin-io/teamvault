@@ -1,0 +1,76 @@
+# HIPAA PHI detection patterns — reference set.
+# Different EHR systems use different formats (Epic, Cerner, Allscripts each differ).
+# This is a STARTING POINT. Teams should add their BAA-specific identifiers to a
+# downstream fork of this pack, not edit this file in the master template.
+#
+# Known limit (surfaced to reviewer agent): regex catches structured PHI like MRN/SSN/NPI/DOB
+# patterns. Names alongside conditions/medications is REAL PHI that regex CANNOT catch — that
+# requires human review or LLM-based classification, deferred to v0.1.
+
+patterns:
+  # ---- Medical Record Numbers ----
+  - name: mrn_with_prefix
+    pattern: '(?i)\b(MRN|Patient\s*#|Pt\s*#|Med\s*Rec|Patient\s*Name|Patient\s*ID|Pt\s*Name|Pt\s*ID)[\s:#-]*\d{4,12}\b'
+    description: Medical Record Number with common prefix (MRN, Patient #/Name/ID, Pt #/Name/ID, Med Rec)
+
+  - name: patient_bare
+    pattern: '(?i)\bPatient[\s:]+\d{4,12}\b'
+    description: "Patient: <number> form"
+
+  - name: mrn_bare_near_keyword
+    pattern: '(?i)\b(patient|admit(ted)?|discharge[d]?|encounter|visit)\b[^.\n]{0,40}\b\d{7,10}\b'
+    description: bare 7-10 digit MRN near patient-context keywords (Epic default 8-digit MRN)
+
+  # ---- SSNs ----
+  - name: ssn_dashed
+    pattern: '\b\d{3}-\d{2}-\d{4}\b'
+    description: US SSN in XXX-XX-XXXX form
+
+  - name: ssn_dotted
+    pattern: '\b\d{3}\.\d{2}\.\d{4}\b'
+    description: US SSN with dots (XXX.XX.XXXX)
+
+  - name: ssn_spaced
+    pattern: '\b\d{3} \d{2} \d{4}\b'
+    description: US SSN with spaces (XXX XX XXXX)
+
+  - name: ssn_explicit
+    pattern: '(?i)\bSSN[\s:#-]*\d{9}\b'
+    description: SSN with explicit prefix and no separators
+
+  # ---- Provider IDs ----
+  - name: npi
+    pattern: '(?i)\b(NPI|Provider\s*ID|Provider\s*#)[\s:#-]*\d{10}\b'
+    description: National Provider Identifier (10 digits)
+
+  - name: ccn
+    pattern: '(?i)\bCCN[\s:#-]*\d{6}\b'
+    description: CMS Certification Number
+
+  # ---- DOB / dates ----
+  - name: dob_full_with_prefix
+    pattern: '(?i)\b(DOB|D\.O\.B\.|Birth(date|day))[\s:#-]*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b'
+    description: Date of birth with explicit DOB / Birthdate / Birthday prefix
+
+  - name: dob_iso_with_prefix
+    pattern: '(?i)\b(DOB|D\.O\.B\.|Birth(date|day))[\s:#-]*\d{4}-\d{1,2}-\d{1,2}\b'
+    description: ISO-format DOB with explicit prefix
+
+  - name: bare_date_near_patient_keyword
+    pattern: '(?i)\b(patient|pt|born|birth)\b[^.\n]{0,30}\b\d{1,2}[/.-]\d{1,2}[/.-](?:19|20)\d{2}\b'
+    description: bare MM/DD/YYYY date appearing near patient/born/birth keywords
+
+  # ---- Contact info (PHI under §164.514) ----
+  - name: email
+    pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    description: email address (PHI when associated with a patient)
+
+  - name: us_phone
+    pattern: '(?i)\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b'
+    description: US phone number (PHI when associated with a patient)
+
+# Test data exception: synthetic data prefixed SYNTHETIC_ / TEST_ / FAKE_ is conventionally
+# allowed. v0.0 pack runtime does NOT special-case these — teams should structure test data
+# so the synthetic prefix appears WHERE the regex would otherwise match, or use placeholder
+# strings entirely. v0.1 will add a `synthetic_allowed` mode that strips matches preceded by
+# these tokens before evaluating.
