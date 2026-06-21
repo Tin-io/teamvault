@@ -1,6 +1,6 @@
 ---
 name: teamvault-review
-description: Run the TeamVault pack-runtime review on the current diff. Loads all enabled packs from the bound space, fans out their reviewer contributions, and produces a verdict (pass | block) with per-reviewer details. Use when the user asks for a TeamVault review, before opening a PR, or when investigating a previously-flagged review verdict.
+description: Run the TeamVault pack-runtime check on a LOCAL diff (working directory, branch, or any git range). Loads all enabled packs from the bound space, fans out their reviewer contributions, and produces a verdict (pass | block) with per-reviewer details. Use REPEATEDLY during development — before commits, before opening a PR, after pulling — to verify pack scrubbers + reviewers pass. Fast, deterministic, regex-based. For reviewing an ALREADY-OPENED PR by number with general code-quality checks + CI status, use /pr-review instead.
 ---
 
 # TeamVault Review
