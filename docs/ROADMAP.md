@@ -30,9 +30,20 @@
 
 ---
 
+## ✅ Shipped after v0.0 (reconciled 2026-06-20)
+
+These were built post-base-v0.0 and merged into `main` (commit `7c68bbe`), but the tiers below were authored *before* that — so several items are marked DONE inline. Reconciled 2026-06-20 against what actually shipped.
+
+- **P0.1 — Audit log** ✅ (`sidecar/audit.py`; JSONL + SHA-256 tamper-evident hash chain).
+- **P1.5 — Contextual retrieval prefixes** ✅ (static variant, `sidecar/ingest.py`; LLM-generated variant still pending).
+- **Pack `knowledge_topics`** ✅ (PACK.yaml schema + loader; was not previously roadmapped).
+- **`vault_packs` / `vault_cite` / `vault_query_log` MCP tools + `/packs` `/cite` `/query_log` endpoints** ✅ (the search→cite→audit loop; was not previously roadmapped).
+
+---
+
 ## 🚨 P0 — Compliance & demo follow-through
 
-### 📝 P0.1 — Audit log (HIPAA §164.312(b)) [HIPAA] [SIZE: M ~6h]
+### ✅ P0.1 — Audit log (HIPAA §164.312(b)) — SHIPPED (post-v0.0) [HIPAA] [SIZE: M ~6h]
 
 Source: Sec critic F2.
 
@@ -135,7 +146,7 @@ v0.0 ships only the macOS install path (launchd plist via `launchctl bootstrap`)
 
 ## 🔢 P1 — IR quality
 
-### 🧠 P1.5 — Contextual retrieval prefixes [IR] [SIZE: M ~4h]
+### ✅ P1.5 — Contextual retrieval prefixes — SHIPPED (static; LLM-gen pending) [IR] [SIZE: M ~4h]
 
 Source: R2 F1, Anthropic research (35% recall improvement standalone, 67% with hybrid).
 

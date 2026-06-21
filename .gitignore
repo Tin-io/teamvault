@@ -52,3 +52,6 @@ logs/
 
 # Per-developer state-of-the-build doc (not tracked in repo)
 HANDOFF.md
+
+# Personal planning docs — local only (contain personal repo/path specifics)
+docs/PRD-v0.1.md
