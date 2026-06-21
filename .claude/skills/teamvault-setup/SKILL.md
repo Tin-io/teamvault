@@ -216,6 +216,80 @@ The block is **static** — it never enumerates the team's `knowledge_topics`.
 The agent learns them at runtime by calling `vault_packs()`. That way the
 project CLAUDE.md doesn't drift when the space adds or removes packs.
 
+### 7.5. Deploy opinionated PR workflow skills (optional)
+
+The space repo ships an opinionated PR workflow as composable skills:
+`pr-push`, `pr-review`, `pr-fix`, and `pr-pipeline` (conductor). They
+need to be deployed INTO the bound project's `.claude/skills/` so they
+fire when working in that project — not just when working in the space
+repo. `code-structure` is NOT auto-deployed (each project owner writes
+their own tailored version).
+
+Detect what the space ships:
+
+```bash
+AVAILABLE=$(ls -d "$SPACE_DIR/.claude/skills/pr-"*/ 2>/dev/null | xargs -n1 basename | tr '\n' ' ')
+```
+
+If `$AVAILABLE` is empty (this space's fork stripped out the pr-*
+skills), surface that and SKIP this entire step.
+
+Otherwise, ask the user:
+
+> "Deploy TeamVault's PR workflow skills (`$AVAILABLE`) into this
+> project? Copies into `<project>/.claude/skills/` and commits to
+> project git. You can delete later via `rm -rf .claude/skills/pr-*`.
+> [Y/n]"
+
+If yes, for each skill in `$AVAILABLE`:
+
+1. If `<project>/.claude/skills/<name>/` already exists, ask the user
+   whether to overwrite. Default: skip to preserve any project-side
+   customizations.
+2. Otherwise, copy the skill directory from space to project:
+
+```bash
+mkdir -p "$PROJECT_DIR/.claude/skills"
+cp -r "$SPACE_DIR/.claude/skills/$NAME" "$PROJECT_DIR/.claude/skills/$NAME"
+```
+
+After all copies, commit to the project repo — stage only the deployed
+paths, NEVER a blanket `git add .` (would sweep up unrelated working-
+tree changes):
+
+```bash
+cd "$PROJECT_DIR"
+for NAME in "${DEPLOYED[@]}"; do
+    git add ".claude/skills/$NAME"
+done
+git commit -m "deploy teamvault pr-workflow skills: ${DEPLOYED[*]}"
+```
+
+Do NOT push automatically. The user pushes when ready (subject to their
+normal "no push without approval" preference).
+
+Confirm to the user:
+- Which skills were deployed; which were skipped (already present)
+- That after the Claude Code restart in §9 they'll have new slash
+  commands available in this project: `/pr-push`, `/pr-review`,
+  `/pr-fix`, `/pr-pipeline`
+- That the commit is local — they need to push when ready
+
+If the user answered no: skip silently. Mention they can deploy later
+by re-running this setup skill, or by manually copying from
+`$SPACE_DIR/.claude/skills/pr-*` into `<project>/.claude/skills/`.
+
+**Why commit (not just copy)?** The team needs visibility into which
+projects have the workflow deployed (consistency across repos). A copy-
+only deploy benefits only this dev's machine; teammates who pull the
+project don't get the skills.
+
+**Why not auto-deploy `code-structure`?** That skill ships in the space
+as a teamvault-tailored EXAMPLE of the reference-skill pattern. Each
+project should write its own `code-structure` tuned to its conventions
+— copying the example verbatim into a non-teamvault project would
+inject wrong architectural guidance.
+
 ### 8. Smoke test (BEFORE the user restarts Claude Code)
 
 The sidecar can take 8-15s to come up on first launch (cold imports + torch lazy
@@ -248,7 +322,7 @@ Show:
 - The space they're now bound to (`SPACE_NAME` + `SPACE_DIR`)
 - That the sidecar is running (`launchctl list | grep teamvault`)
 - That the MCP server is registered (`claude mcp list | grep teamvault`)
-- The slash commands they now have: `/teamvault-publish`, `/teamvault-review`
+- The slash commands they now have: `/teamvault-publish`, `/teamvault-review` (always); plus `/pr-push`, `/pr-review`, `/pr-fix`, `/pr-pipeline` if §7.5 deployed them
 
 Then: **"Run `/quit` to exit Claude Code and relaunch from your terminal. After relaunch, the `vault_search`, `vault_publish`, and `vault_status` MCP tools will be available."**
 
