@@ -24,7 +24,7 @@
 10. [Risks & honest caveats](#10--risks--honest-caveats)
 11. [Phased roadmap](#11--phased-roadmap)
 12. [Success metric](#12--success-metric)
-13. [Open decisions](#13--open-decisions)
+13. [Decisions](#13--decisions)
 14. [Provenance](#14--provenance)
 
 ---
@@ -287,16 +287,16 @@ The bar for "worth it" is **not** "dethrone OMC." It is: **one engine that makes
 
 ---
 
-## 13. ❓ Open decisions
+## 13. ✅ Decisions
 
-For the maintainer / design partners to settle:
+Settled 2026-06-20:
 
-1. **Confirm substrate-first sequencing** — agree to lead with the substrate and ship the workflow as packs (vs. building a competing harness)?
-2. **Which context first** for Phase-1 dogfooding — the org (most mature skills), the client (cleanest greenfield), or personal (lowest risk)?
-3. **Cross-tenant model** — hard-isolated spaces only for now, with tunnels deferred until governance lands? (Recommended.)
-4. **Naming** — keep "TeamVault" (with "space" covering personal/team/org) or rebrand before OSS launch?
-5. **Hosting** — stay local-first / git-distributed, or plan a hosted option for non-technical adopters? (The org-KB plan defers this to a later "hosted-migration trigger.")
-6. **Pack-security posture** — what trust tier / signing is required before *executable* (hook/loop) packs are accepted into the public registry?
+1. **Substrate-first sequencing — YES.** Lead with the substrate; ship the workflow as packs (the v3 loop as the v0.2 flagship pack), not a competing harness.
+2. **First context — PERSONAL.** Dogfood on the maintainer's own repos first (lowest risk, fastest feedback, no client data); org/client follow.
+3. **Cross-tenant model — hard-isolated spaces only;** tunnels deferred until governance lands (moot at one tenant).
+4. **Naming — keep "TeamVault"** through v0.1 (a "space" covers personal/team/org); revisit at OSS launch.
+5. **Hosting — local-first / git-distributed** (status quo); a hosted option stays a later "migration trigger."
+6. **Pack-security posture — deferred** while only markdown/regex packs exist; signing + registry trust tiers ([P2.1](ROADMAP.md), [P2.19](ROADMAP.md)) must land **before** executable (hook/loop) packs ship publicly in Phase 2.
 
 ---
 
