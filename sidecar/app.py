@@ -17,6 +17,10 @@ $ uvicorn sidecar.app:app --port ${TEAMVAULT_PORT:-8100}
 """
 from __future__ import annotations
 
+import fcntl
+import logging
+import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +29,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from sidecar import config
+from sidecar import logging_setup
+
+# Module logger. Handlers attached in setup_logging() during _startup() —
+# at module-import time the logger has no handlers, so any pre-startup
+# records are silently dropped (which is fine; nothing logs at import).
+log = logging.getLogger("teamvault.sidecar")
 
 app = FastAPI(
     title="TeamVault Sidecar",
@@ -42,9 +52,18 @@ class SpaceState(BaseModel):
     name: str
     last_pull: str | None = None  # ISO 8601 UTC
     last_error: str | None = None
+    # Set to the ISO timestamp of the last successful reindex. /readyz uses
+    # this to signal readiness (distinct from /healthz, which signals only
+    # process liveness — the K8s liveness-vs-readiness pattern).
+    last_indexed: str | None = None
 
 
 _spaces: dict[str, SpaceState] = {}
+
+# Holds the sidecar PID lockfile descriptor for the process lifetime.
+# Closing the fd releases the flock and allows another sidecar to start.
+# Module-level so the GC doesn't reclaim it after _acquire_pid_lock() returns.
+_PID_LOCK_FD: Any = None
 
 
 def _now_iso() -> str:
@@ -175,13 +194,57 @@ _DEFAULT_LOG_ACTIONS: tuple[str, ...] = ("search", "cite", "publish", "publish_b
 
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
-    """Liveness probe + per-space sync state. Always returns 200 if the app is up."""
+    """Liveness probe + per-space sync state. Always returns 200 if the app is up.
+
+    `recent_errors` is the in-memory tail of the last 5 WARNING+ log records
+    per space (plus a `__sidecar__` bucket for pre-space-aware errors).
+    """
     return {
         "status": "ok",
         "version": config.VERSION,
         "config": config.summary(),
         "spaces": [s.model_dump() for s in _spaces.values()],
+        "recent_errors": logging_setup.all_recent_errors(),
     }
+
+
+@app.get("/readyz")
+def readyz() -> dict[str, Any]:
+    """Readiness probe — distinct from /healthz.
+
+    Returns 200 only when the sidecar can actually serve useful search results:
+    at least one space is registered AND has completed a reindex AND has no
+    recorded error. Returns 503 with `reason` otherwise.
+
+    Use /healthz to ask "is the process up?"; use /readyz to ask "will a
+    search return useful results?" — the K8s liveness-vs-readiness pattern.
+    """
+    if not _spaces:
+        raise HTTPException(
+            status_code=503,
+            detail={"ready": False, "reason": "no space registered"},
+        )
+    not_indexed = [s.name for s in _spaces.values() if not s.last_indexed]
+    if not_indexed:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "ready": False,
+                "reason": "space(s) not yet indexed",
+                "spaces": not_indexed,
+            },
+        )
+    errored = {s.name: s.last_error for s in _spaces.values() if s.last_error}
+    if errored:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "ready": False,
+                "reason": "space in error state",
+                "errors": errored,
+            },
+        )
+    return {"ready": True, "spaces": [s.model_dump() for s in _spaces.values()]}
 
 
 @app.post("/search", response_model=SearchResponse)
@@ -219,7 +282,7 @@ def search_endpoint(req: SearchRequest) -> SearchResponse:
             },
         )
     except Exception as e:
-        print(f"warning: audit.record(search) failed: {e}")
+        log.warning("audit.record(search) failed: %s", e, extra={"space": space_name})
     return SearchResponse(
         query_id=query_id,
         results=[SearchHit(**h) for h in hits],
@@ -265,7 +328,7 @@ def publish_endpoint(req: PublishRequest) -> PublishResponse:
                 },
             )
     except Exception as e:
-        print(f"warning: audit.record(publish) failed: {e}")
+        log.warning("audit.record(publish) failed: %s", e, extra={"space": req.space})
     return PublishResponse(**result)
 
 
@@ -274,6 +337,9 @@ def reindex_endpoint(req: ReindexRequest) -> ReindexResponse:
     from sidecar import ingest
 
     counts = ingest.reindex_space(req.space)
+    # Mark readiness: any non-erroring reindex flips /readyz to 200 for this space.
+    if req.space in _spaces and counts.get("errors", 0) == 0:
+        _spaces[req.space].last_indexed = _now_iso()
     try:
         from sidecar import audit
 
@@ -287,7 +353,7 @@ def reindex_endpoint(req: ReindexRequest) -> ReindexResponse:
             },
         )
     except Exception as e:
-        print(f"warning: audit.record(reindex) failed: {e}")
+        log.warning("audit.record(reindex) failed: %s", e, extra={"space": req.space})
     return ReindexResponse(**counts)
 
 
@@ -361,7 +427,7 @@ def cite_endpoint(req: CiteRequest) -> CiteResponse:
         )
         return CiteResponse(recorded=True)
     except Exception as e:
-        print(f"warning: audit.record(cite) failed: {e}")
+        log.warning("audit.record(cite) failed: %s", e, extra={"space": req.space})
         return CiteResponse(recorded=False)
 
 
@@ -485,8 +551,55 @@ def _register_space_from_yaml(space_root: Path) -> None:
     config.ensure_state_dirs(name)
 
 
+def _acquire_pid_lock() -> None:
+    """Take the sidecar PID lock — prevents two sidecars contending on the same indexes.
+
+    Uses `fcntl.flock` (advisory, Unix). If the lock is held, another sidecar
+    process is alive; refuse to start with a clear error and exit non-zero so
+    launchd / the user notice instead of silently fighting another sidecar
+    over the same indexes and audit log.
+
+    Lockfile path: `$TEAMVAULT_HOME/sidecar.pid`. Single global lock (not
+    per-space) because the runtime is currently single-process.
+    """
+    global _PID_LOCK_FD
+    config.TEAMVAULT_HOME.mkdir(parents=True, exist_ok=True)
+    pid_path = config.TEAMVAULT_HOME / "sidecar.pid"
+    # Open in "a+" (read-write, NO truncate) so the existing PID is still
+    # readable when the flock fails. "w" mode would truncate the file before
+    # the flock attempt and the error message would say "<empty>".
+    fd = open(pid_path, "a+")
+    try:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        try:
+            fd.seek(0)
+            existing_pid = fd.read().strip() or "<empty>"
+        except Exception:
+            existing_pid = "<unreadable>"
+        sys.stderr.write(
+            "ERROR: another TeamVault sidecar is already running.\n"
+            f"  PID lockfile: {pid_path}\n"
+            f"  PID inside:   {existing_pid}\n"
+            "  Find the live process with `launchctl list | grep teamvault`,\n"
+            "  then restart cleanly with\n"
+            "  `launchctl kickstart -k gui/$(id -u)/dev.teamvault.sidecar`.\n"
+            "  Exiting.\n"
+        )
+        sys.exit(1)
+    # We own the lock — safe to truncate and write our PID.
+    fd.seek(0)
+    fd.truncate()
+    fd.write(f"{os.getpid()}\n")
+    fd.flush()
+    _PID_LOCK_FD = fd
+
+
 @app.on_event("startup")
 def _startup() -> None:
+    _acquire_pid_lock()
+    logging_setup.setup_logging()
+    log.info("sidecar starting (pid=%d, port=%d)", os.getpid(), config.TEAMVAULT_PORT)
     if config.TEAMVAULT_SPACE_ROOT and config.TEAMVAULT_SPACE_ROOT.exists():
         _register_space_from_yaml(config.TEAMVAULT_SPACE_ROOT)
         # Kick off the background git_sync loop for the registered space.
@@ -495,5 +608,5 @@ def _startup() -> None:
 
             git_sync.start(config.TEAMVAULT_SPACE_ROOT, interval=60)
         except Exception as e:
-            # Don't crash sidecar boot on git_sync setup error; just log.
-            print(f"warning: git_sync failed to start: {e}")
+            # Don't crash sidecar boot on git_sync setup error; log it instead.
+            log.warning("git_sync failed to start: %s", e)
