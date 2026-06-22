@@ -33,12 +33,11 @@ git diff --quiet || echo "WARN: working tree dirty — commit or stash first"
 
 ### 1. Resolve the base branch
 
-Per Merkos org convention (from global CLAUDE.md): `staging` for `merkos-302/*` repos, default branch otherwise.
+Default: the repo's GitHub `defaultBranchRef` (usually `main`). Some teams use a non-default integration branch (e.g., `staging`, `develop`, `next`) for their normal PR flow — set `TEAMVAULT_PR_BASE_BRANCH=<branch>` in your environment (or in your team's space `space.yaml` / project `CLAUDE.md`) to override.
 
 ```bash
-REMOTE_URL=$(git remote get-url origin)
-if echo "$REMOTE_URL" | grep -q "merkos-302/"; then
-    BASE=staging
+if [ -n "${TEAMVAULT_PR_BASE_BRANCH:-}" ]; then
+    BASE="$TEAMVAULT_PR_BASE_BRANCH"
 else
     BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 fi
