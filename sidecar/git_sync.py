@@ -69,9 +69,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# Substrings that mark a git stderr as an auth failure. Covers HTTPS
-# (gh / token / username prompts disabled) and SSH (publickey rejected).
-_AUTH_FAIL_MARKERS = (
+# Substrings that mark a git stderr as a *credential-missing* auth failure.
+# Standard HTTPS prompt-disabled and SSH publickey-rejected patterns. The fix
+# for these is the canonical "refresh your credentials" advice.
+_AUTH_FAIL_MARKERS_CREDENTIAL = (
     "could not read Username",
     "could not read Password",
     "Permission denied (publickey)",
@@ -81,11 +82,41 @@ _AUTH_FAIL_MARKERS = (
     "remote: Invalid username or password",
 )
 
-_AUTH_HINT = "git auth failed — run `gh auth refresh -h github.com -s repo` and retry"
+# Substrings that mark a git stderr as a *repo-hidden* failure — i.e. GitHub
+# returned a 404 because the active credentials don't have access to the
+# private repo (GitHub deliberately 404s instead of 403'ing private repos to
+# avoid leaking existence). The most common cause on multi-account macOS
+# setups: gh-credential-helper resolves to the wrong active gh user.
+# Surfaced by dogfood 2026-06-22 — see kb entry b1-personal-fork-ssh-pivot.
+_AUTH_FAIL_MARKERS_REPO_HIDDEN = (
+    "Repository not found",
+    "fatal: repository '",
+)
+
+_AUTH_HINT_CREDENTIAL = "git auth failed — run `gh auth refresh -h github.com -s repo` and retry"
+
+_AUTH_HINT_REPO_HIDDEN = (
+    "git access failed (remote returned 404 — repo hidden or no read access). "
+    "Common multi-account cause on macOS: gh-credential-helper resolved to the wrong gh user. "
+    "Try, in order: (1) verify `git remote -v` matches the expected repo; "
+    "(2) `gh auth status` then `gh auth switch -u <repo-owner>` if multi-account; "
+    "(3) switch origin to SSH: `git remote set-url origin git@github.com:OWNER/REPO.git` "
+    "(most durable for multi-account users)."
+)
 
 
-def _detect_auth_failure(stderr: str) -> bool:
-    return any(m in stderr for m in _AUTH_FAIL_MARKERS)
+def _detect_auth_failure(stderr: str) -> str | None:
+    """Classify a git stderr against known auth-failure patterns.
+
+    Returns the appropriate hint message if stderr matches a known pattern;
+    None if no pattern matches. Repo-hidden patterns take precedence over
+    credential-missing patterns since they're a more specific diagnosis.
+    """
+    if any(m in stderr for m in _AUTH_FAIL_MARKERS_REPO_HIDDEN):
+        return _AUTH_HINT_REPO_HIDDEN
+    if any(m in stderr for m in _AUTH_FAIL_MARKERS_CREDENTIAL):
+        return _AUTH_HINT_CREDENTIAL
+    return None
 
 
 def _run_git(space_root: Path, args: list[str], timeout_s: int) -> tuple[bool, str]:
@@ -160,9 +191,10 @@ def _sync_once(
 
     ok, stderr = _run_git(space_root, ["fetch", "origin"], timeout_s)
     if not ok:
-        if _detect_auth_failure(stderr):
-            log.warning(_AUTH_HINT, extra={"space": space_name})
-            return SyncResult(ok=False, error=_AUTH_HINT)
+        hint = _detect_auth_failure(stderr)
+        if hint:
+            log.warning(hint, extra={"space": space_name})
+            return SyncResult(ok=False, error=hint)
         log.warning("git fetch failed: %s", stderr, extra={"space": space_name})
         return SyncResult(ok=False, error=f"git fetch failed: {stderr}")
 
@@ -197,9 +229,10 @@ def _sync_once(
 
     ok, stderr = _run_git(space_root, ["pull", "--ff-only", "origin"], timeout_s)
     if not ok:
-        if _detect_auth_failure(stderr):
-            log.warning(_AUTH_HINT, extra={"space": space_name})
-            return SyncResult(ok=False, error=_AUTH_HINT)
+        hint = _detect_auth_failure(stderr)
+        if hint:
+            log.warning(hint, extra={"space": space_name})
+            return SyncResult(ok=False, error=hint)
         log.warning("git pull failed: %s", stderr, extra={"space": space_name})
         return SyncResult(ok=False, error=f"git pull failed: {stderr}")
 
