@@ -204,11 +204,11 @@ Add to PACK.yaml schema:
 - `timeout_s` per reviewer
 - Per-reviewer token budget (R1 F7)
 
-### 🤖 P2.5 — `/discover` cross-repo agent comms (skeleton) [ARCH] [SIZE: L ~6h]
+### 🤖 P2.5 — `/agent-board` cross-repo agent comms (skeleton) [ARCH] [SIZE: L ~6h]
 
 Source: R1 F5, OMC analysis flagged this as the maintainer's load-bearing differentiator.
 
-Define the message format, board location (per-space `discover/` dir), addressing model, durability, cross-space sends. Ship a skeleton implementation; iterate based on real cross-team use.
+Define the message format, board location (per-space `agent-board/` dir), addressing model, durability, cross-space sends. Ship a skeleton implementation; iterate based on real cross-team use.
 
 ---
 
@@ -330,7 +330,7 @@ Source: USER_GUIDE.md / TROUBLESHOOTING.md OS-support commitment.
 - P1.3 wheelhouse (visible install lift)
 
 **Week 5-6 (v0.2 milestone):**
-- P2.5 /discover skeleton
+- P2.5 /agent-board skeleton
 - P2.3 Codex adapter stub
 - P2.4 pack contract extensions
 

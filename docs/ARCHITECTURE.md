@@ -490,7 +490,7 @@ See [ROADMAP.md](ROADMAP.md) for the full structured list. Highest-priority arch
 - Sidecar split: separate pip package + config template — P2.2
 - Host adapter abstraction + Codex stub — P2.3
 - Pack contract extensions (`ordering`, `mode: veto`, `on_error`, `depends_on`, `mutually_exclusive_with`, `timeout_s`, per-reviewer token budget) — P2.4
-- `/discover` cross-repo agent comms skeleton — P2.5
+- `/agent-board` cross-repo agent comms skeleton — P2.5
 - Workspace → variant rename — P2.6
 - New gap-coverage items surfaced by V2 review (see ROADMAP "Gaps from V2 review") — fail-closed enumeration, data-egress invariants, breach-response runbook, `_context` MCP tool, retrieval observability, embedding-model migration, host-adapter alias gen, `/teamvault-cost`, `/teamvault-pack-upgrade`, `/teamvault-upstream-sync`, `get_company_context`, GOVERNANCE.md, KB partitioning at scale, code-signing, plist-reset recovery
 
