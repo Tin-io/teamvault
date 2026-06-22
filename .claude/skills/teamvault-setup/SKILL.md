@@ -27,20 +27,24 @@ If `claude mcp list` errors with "command not found", surface that — the user 
 
 ### 1. Identify the team space repo
 
-Ask the user once: **"What is the URL of your team's TeamVault space repo?"**
+**First, ask the user:** "Do you already have a TeamVault space fork for your team, or are you the first dev — meaning we need to create the fork now?"
 
-For example: `https://github.com/your-org/teamvault-<space>`.
+**If they have a fork already:** ask "What's the URL of your team's TeamVault space repo?" — e.g. `https://github.com/your-org/teamvault-<team>`. Capture as `SPACE_URL`.
 
-If the user doesn't have one yet, walk them through forking the master template:
+**If they're the seeder (no fork yet):** walk them through forking the master template:
 
 ```bash
-gh repo fork tin-io/teamvault --org your-org --fork-name teamvault-<team> --clone=false
+gh repo fork tin-io/teamvault --org <their-org> --fork-name teamvault-<team> --clone=false
 ```
+
+Then derive `SPACE_URL=https://github.com/<their-org>/teamvault-<team>` and proceed.
+
+Either branch ends with `SPACE_URL` captured.
 
 ### 2. Derive paths + clone the space + reconcile space.yaml::name
 
 ```bash
-SPACE_URL=<from user>
+SPACE_URL=<from user, captured in §1>
 SPACE_NAME=$(basename "$SPACE_URL" | sed 's/\.git$//')
 SPACE_DIR="$HOME/$SPACE_NAME"   # e.g. ~/teamvault-<space>
 mkdir -p "$HOME/.teamvault/logs" "$HOME/Library/LaunchAgents"
@@ -66,15 +70,83 @@ fi
 
 If `space.yaml::name` was already set to `$SPACE_NAME` (because the fork was prepared properly), this is a no-op.
 
+**If `space.yaml::name` was actually changed by the reconcile, commit the rename now** so the fork carries the renamed identity forward — otherwise it sits dirty in the working tree and may contaminate the §3 bind commit:
+
+```bash
+if [ -n "$(git -C "$SPACE_DIR" status --porcelain space.yaml)" ]; then
+  cd "$SPACE_DIR"
+  git add space.yaml
+  git commit -m "fork: rename space to $SPACE_NAME"
+  git push 2>/dev/null || echo "(push deferred — no upstream yet or no permission)"
+fi
+```
+
+### 2.5. Confirm enabled packs
+
+Read what the space currently declares:
+
+```bash
+PACKS_NOW=$(python3 -c "
+import yaml; d = yaml.safe_load(open('$SPACE_DIR/space.yaml'))
+print(','.join(d.get('enabled_packs') or []))
+")
+```
+
+**Ask the user:**
+
+> "This space currently enables packs: `$PACKS_NOW` (master template defaults to `hipaa-reference + clickup-linkage`). Keep as-is, modify, or set to none? Available in the master template: `hipaa-reference`, `clickup-linkage`, `jira-linkage`. (keep / new comma-separated list / none)"
+
+If the user says "keep" (or confirms by saying anything affirmative), do nothing further. Otherwise persist their choice:
+
+```bash
+PACKS_INPUT="<from user, e.g. 'hipaa-reference,jira-linkage' or 'none'>"
+if [ "$PACKS_INPUT" != "keep" ] && [ -n "$PACKS_INPUT" ]; then
+  python3 -c "
+import pathlib, yaml
+p = pathlib.Path('$SPACE_DIR/space.yaml')
+doc = yaml.safe_load(p.read_text()) or {}
+if '$PACKS_INPUT' == 'none':
+    doc['enabled_packs'] = []
+else:
+    doc['enabled_packs'] = [s.strip() for s in '$PACKS_INPUT'.split(',') if s.strip()]
+# hipaa-reference implies compliance: true (PR-gated binds + no-auto-deploy)
+if 'hipaa-reference' in (doc.get('enabled_packs') or []):
+    doc['compliance'] = True
+p.write_text(yaml.safe_dump(doc, sort_keys=False))
+"
+  cd "$SPACE_DIR"
+  git add space.yaml
+  git commit -m "seed: enabled_packs=$PACKS_INPUT"
+  git push 2>/dev/null || echo "(push deferred — no upstream yet or no permission)"
+fi
+```
+
+**Compliance side-effect to surface explicitly:** enabling `hipaa-reference` automatically sets `space.yaml::compliance: true`, which makes §3's bind step PR-gated (instead of direct-push) and disables auto-deploy of pack updates. Tell the user before persisting so they're not surprised.
+
+Verify the final state:
+
+```bash
+python3 -c "
+import yaml
+d = yaml.safe_load(open('$SPACE_DIR/space.yaml'))
+print('enabled_packs:', d.get('enabled_packs', []))
+print('compliance:', d.get('compliance', False))
+"
+```
+
 ### 3. Detect the current project repo and stage a bind
 
 ```bash
 PROJECT_REMOTE=$(git -C "$PWD" remote get-url origin)
 ```
 
-Append to the space's `repos.yaml`. **The file is a YAML list and may be empty;
-just append a new item at the bottom of the file** (do NOT replace existing
-content):
+**Ask the user before persisting:**
+
+> "I'm about to bind `$PROJECT_REMOTE` to space `$SPACE_NAME` by appending to `repos.yaml`. This commits and pushes to the space repo (or opens a PR if `compliance: true`). Confirm? (Y/n — defaults Y)"
+
+If the user declines: ask which repo they DID want bound (they can `cd` to the right project dir and re-run this skill), or skip the bind entirely and proceed to sidecar install — the install works without the bind; binding can be added later by re-running this skill from the correct project directory.
+
+If confirmed, append to the space's `repos.yaml`. **The file is a YAML list and may be empty; just append a new item at the bottom of the file** (do NOT replace existing content):
 
 ```bash
 cat >> "$SPACE_DIR/repos.yaml" <<EOF
@@ -121,13 +193,13 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-**Tell the user explicitly:** "This install pulls torch (~2.5 GB) and downloads the Nomic embedding model (~547 MB) on first reindex. On corporate Wi-Fi this can take 5–10 minutes; on conference Wi-Fi with multiple devs hitting PyPI simultaneously, plan 15–30 minutes. For a tight demo, pre-bake a wheelhouse or have devs install ahead of time."
+**Tell the user explicitly:** "This install pulls torch (~2.5 GB) and downloads the Nomic embedding model (~547 MB) on first reindex. On corporate Wi-Fi this can take 5–10 minutes; on conference Wi-Fi with multiple devs hitting PyPI simultaneously, plan 15–30 minutes. For a tight demo, have devs install ahead of time."
 
 ### 5. Generate launchd plist
 
 The plist must run uvicorn with the **sidecar package importable on `sys.path`**. Setting `WorkingDirectory` to `$SPACE_DIR` and adding `PYTHONPATH=$SPACE_DIR` is the simplest correct shape.
 
-Write `$HOME/Library/LaunchAgents/dev.teamvault.sidecar.plist`:
+Write `$HOME/Library/LaunchAgents/dev.teamvault.sidecar.plist` — **use an unquoted heredoc** (`cat > $PLIST <<EOF ... EOF`, NOT `<<'EOF'`) so bash expands `${SPACE_DIR}`, `${TEAMVAULT_PORT:-8100}`, and `${HOME}` inline before launchd reads the file. A quoted heredoc produces a plist with literal `${...}` strings; launchd rejects the port as invalid and the sidecar never starts.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -225,9 +297,10 @@ fire when working in that project — not just when working in the space
 repo. `code-structure` is NOT auto-deployed (each project owner writes
 their own tailored version).
 
-Detect what the space ships:
+Detect what the space ships, and capture the project directory (= the agent's current working dir — the project repo the user started the skill in):
 
 ```bash
+PROJECT_DIR="$PWD"
 AVAILABLE=$(ls -d "$SPACE_DIR/.claude/skills/pr-"*/ 2>/dev/null | xargs -n1 basename | tr '\n' ' ')
 ```
 
