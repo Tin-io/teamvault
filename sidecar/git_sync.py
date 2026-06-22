@@ -100,7 +100,7 @@ _AUTH_HINT_REPO_HIDDEN = (
     "Common multi-account cause on macOS: gh-credential-helper resolved to the wrong gh user. "
     "Try, in order: (1) verify `git remote -v` matches the expected repo; "
     "(2) `gh auth status` then `gh auth switch -u <repo-owner>` if multi-account; "
-    "(3) switch origin to SSH: `git remote set-url origin git@github.com:OWNER/REPO.git` "
+    "(3) switch origin to SSH form: `git remote set-url origin git@<host>:<owner>/<repo>.git` "
     "(most durable for multi-account users)."
 )
 
