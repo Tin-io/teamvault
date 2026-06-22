@@ -7,6 +7,18 @@
 
 name: teamvault-template
 description: TeamVault master template — fork to create your team space.
+
+# Light Palace taxonomy (Kingdom → Palace → Wing → Hall → Room + Tunnels).
+# Only KINGDOMS are centrally declared here; palaces/wings/halls/rooms are
+# free-form per-repo (repos.yaml) and per-entry — they emerge from use.
+# See docs/KB-FOUNDATIONS.md for the canonical taxonomy reference.
+#
+# v0.1.x: kingdoms here are documentation-only. v0.1.5+ adds soft validation
+# (/teamvault-publish WARNs if an entry's `kingdom` isn't in this list;
+# never blocks). Rename `your-org` to match your team (e.g., title-21).
+kingdoms:
+  - your-org
+
 compliance: false           # true → auto-deploy disabled; pack updates require /teamvault-apply-pack-update
 enabled_packs:
   - hipaa-reference         # example; remove if your team doesn't handle PHI
