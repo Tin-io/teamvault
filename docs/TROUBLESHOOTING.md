@@ -11,6 +11,8 @@ For each symptom: **Check** (one command), then **Fix** (one or two commands).
 
 > 🍎 **OS scope:** the recovery commands below are Mac-only — `launchctl`, `~/Library/LaunchAgents/`, `~/.teamvault/logs/`, `lsof`, etc. v0.0 supports macOS only. Linux support lands in v0.1 (systemd user unit equivalents); Windows in v0.2 (Service/scheduled task + PowerShell). On Linux today: substitute `systemctl --user status teamvault-sidecar` for `launchctl list | grep dev.teamvault.sidecar`, `journalctl --user -u teamvault-sidecar` for the launchd log paths, and adapt the `~/Library/...` paths to `~/.config/systemd/user/` + `~/.local/share/teamvault/`. Full table in `docs/USER_GUIDE.md::OS support`.
 
+> 🩺 **First port of call: `/teamvault-doctor`** — runs a layered Liveness → Structure → Data diagnostic AND offers a numbered remediation menu (reindex / kickstart / build support bundle). Try it before the manual recipes below; the recipes here cover the failure modes doctor's diagnosis points at, plus a few not yet automated. Doctor's support-bundle option packages config + plist + logs + HTTP probes for sharing — scrubbed of `kb/`, `vault.lance`, and `audit.log` content so it's safe to share with TeamVault maintainers without HIPAA review.
+
 ## 🦾 Sidecar
 
 ### 🚨 Symptom: `vault_search` / `vault_publish` returns nothing or errors

@@ -11,17 +11,35 @@
 
 ---
 
+## 👥 The model (read once before pasting)
+
+Your team forks `tin-io/teamvault` into your org **once** (e.g. `your-org/teamvault-<team-name>`). That fork is your team's **space** — all KB entries, all pack config, all binds live there. Every teammate clones the **fork** (not master) and runs the sidecar against it. Master stays as the upstream you periodically pull updates from.
+
+The setup skill handles both flows from the same paste-in below:
+- **First-time setup (the seeder):** the skill walks you through `gh repo fork tin-io/teamvault --org <your-org> --fork-name teamvault-<team>` first, then installs against the new fork.
+- **Joining an existing team space:** you give the skill the URL of your team's fork; it clones that fork and installs against it.
+
+The `/tmp/teamvault-master` clone in step 1 below is **NOT** your working tree — it exists only so the agent can read the setup skill (`SKILL.md`). The real install lands in `~/teamvault-<space-name>/`, cloned from your team's fork.
+
+---
+
 ## 📌 Paste this prompt
 
 ```
 Install TeamVault on this machine and bind it to the project repo I'm currently in.
 
-1. Clone the master template to a temp dir for the setup skill:
+1. Clone the master template to /tmp ONLY so the setup skill is readable —
+   /tmp/teamvault-master is NOT my working tree, it's just where the agent
+   reads SKILL.md from:
    git clone https://github.com/tin-io/teamvault /tmp/teamvault-master
 
 2. Read /tmp/teamvault-master/.claude/skills/teamvault-setup/SKILL.md and execute it.
 
-3. Ask me whatever you need to proceed — including the team space URL, whether to fork the master template if I don't have a space yet, which packs to enable, and whether to deploy the optional PR workflow skills.
+3. Ask me whatever you need to proceed — the skill will check whether my team
+   already has a TeamVault space fork I should clone (I'll give you the URL),
+   or whether I'm the first dev and need to fork tin-io/teamvault into our
+   org first. Then it'll ask which packs to enable, whether to bind this
+   project repo, and whether to deploy the optional PR workflow skills.
 
 4. When done, confirm by:
    - calling the MCP `vault_status` tool and showing me the output

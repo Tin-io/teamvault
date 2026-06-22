@@ -104,7 +104,9 @@ Install TeamVault for this project.
    - showing me a `vault_search` query result
 ```
 
-The agent walks the install: forks/clones the team space, installs the Python sidecar (FastAPI, LanceDB, SQLite FTS5, Nomic embedding), generates a launchd plist so the sidecar runs on boot, registers the MCP endpoint with Claude Code via `claude mcp add`, then smoke-tests `/healthz`.
+> 👥 **The fork model:** your team forks `tin-io/teamvault` into your org once — that fork is your team's **space**, where KB entries, pack config, and binds live. Every teammate clones the **fork** (not master) and runs the sidecar against it. The paste-in above clones master to `/tmp` ONLY so the agent can read the setup skill; the real working tree lands at `~/teamvault-<space-name>/` (cloned from your team's fork).
+
+The agent walks the install: forks tin-io/teamvault into your org if you don't have a fork yet OR clones the existing team fork if you do (asks 5 conversational questions — fork-flow, space URL, enabled packs, project bind, optional PR-workflow skills), installs the Python sidecar (FastAPI, LanceDB, SQLite FTS5, Nomic embedding), generates a launchd plist so the sidecar runs on boot, registers the MCP endpoint with Claude Code via `claude mcp add`, then smoke-tests `/healthz` (and `/readyz` once the first reindex completes).
 
 > ⚠️ **Heads up: the install pulls `torch` (~2.5 GB) and downloads the Nomic embedding model (~547 MB) on first reindex.** Plan 8-15 minutes on good Wi-Fi; longer on shared Wi-Fi. For demos, pre-install on attendee laptops the day before.
 
@@ -163,6 +165,8 @@ If anything feels off — search returns nothing, publish errors, the agent says
 > "Run /teamvault-status"
 
 The status skill checks the sidecar process, the MCP registration, the cwd→space binding, the vault index state, and the last successful pull per space. It tells you exactly what's healthy and what's not.
+
+When `/teamvault-status` surfaces a `DEGRADED` row and the next question is "why?" — run **`/teamvault-doctor`**. Doctor extends the read-only status with a three-layer diagnostic (Liveness / Structure / Data — including `/readyz`, plist shape, MCP-vs-sidecar path drift, recent_errors tail, audit-chain integrity), pairs each non-OK row with a numbered remediation (reindex / kickstart / build support bundle), and requires explicit confirmation before applying any fix — guide, not autopilot.
 
 ---
 
@@ -368,6 +372,149 @@ TeamVault is a substrate. It does work. But it doesn't do these things, and trea
 - **Maintaining your fork.** Pull updates from the master template (`tin-io/teamvault`) periodically. Security patches to the sidecar will live there.
 - **Customizing patterns for your stack.** The reference HIPAA pack uses generic patterns. Add your team's Epic / Cerner / Allscripts-specific MRN formats. Don't trust the defaults blindly.
 - **Educating your team.** TeamVault is a tool; adoption is a behavior change. Write a one-page workflow narrative for your team and walk through it together in the first week.
+
+---
+
+## 🔄 Upstream sync — pulling improvements from `tin-io/teamvault` into your team's fork
+
+Over time the master template evolves: sidecar bug fixes, new diagnostic skills, refreshed reference packs, doc updates. Your team's fork should periodically pull those improvements **without losing your KB entries, your `space.yaml` customizations, your `repos.yaml` binds, or your custom pack patterns**.
+
+### What is and isn't yours
+
+| Layer | Paths | On sync |
+|---|---|---|
+| **Substrate (upstream owns)** | `sidecar/`, `.github/workflows/`, `.claude/skills/teamvault-{setup,status,publish,review,doctor}/`, `docs/`, `README.md`, `SETUP_PROMPT.md`, `LICENSE` | **Pull from upstream** |
+| **Reference pack defaults** | `packs/{hipaa-reference,clickup-linkage,jira-linkage}/PACK.yaml` + `agents/*.md` (when not customized) | Pull with review |
+| **Team-owned (yours forever)** | `space.yaml`, `repos.yaml`, `kb/entries/**`, custom packs, customized pack scrubbers/agents | **Never pulled** |
+
+### Pattern A — targeted-path checkout (recommended today)
+
+Deterministic, auditable, never touches team-owned files because we never include them in the path list.
+
+```bash
+cd ~/teamvault-<your-space>
+
+# One-time: register upstream
+git remote add upstream https://github.com/tin-io/teamvault
+git remote -v
+
+# Every sync (working tree must be clean first):
+git fetch upstream
+git status
+
+git checkout upstream/main -- \
+  sidecar/ docs/ .github/ \
+  .claude/skills/teamvault-setup/ \
+  .claude/skills/teamvault-status/ \
+  .claude/skills/teamvault-publish/ \
+  .claude/skills/teamvault-review/ \
+  .claude/skills/teamvault-doctor/ \
+  README.md SETUP_PROMPT.md LICENSE
+
+git diff --staged   # review BEFORE committing
+git commit -m "upstream sync: <upstream SHA or tag>"
+launchctl kickstart -k gui/$(id -u)/dev.teamvault.sidecar
+/teamvault-doctor   # confirm everything's still healthy post-sync
+```
+
+If `/teamvault-doctor` flags issues post-sync: `git reset --hard HEAD~1` + kickstart again to roll back, then file an upstream issue.
+
+### Pattern B — `/teamvault-upstream-sync` skill (v0.2 roadmap; ROADMAP P2.14)
+
+Not shipped yet. When it lands: detects upstream delta, applies substrate paths automatically, prompts for reference-pack changes, runs sandbox tests, supports rollback. Use Pattern A for now.
+
+### Anti-patterns
+
+- ❌ **`git merge upstream/main` (untargeted).** Conflicts on `space.yaml` (your kingdoms / packs choice vs upstream defaults), `repos.yaml` (your binds vs empty), and any customized pack files. Devs unfamiliar with git conflict resolution can silently clobber team config.
+- ❌ **"Hey agent, update this fork from master."** Non-deterministic; no clean diff; no audit trail. For HIPAA-adjacent teams the audit answer "the agent did it" isn't acceptable.
+- ❌ **Pulling reference packs blindly.** If your team customized `packs/hipaa-reference/scrubbers/*.yaml` for your specific PHI patterns, an upstream sync of that file overwrites them. Either skip `packs/` from the path list or review the diff carefully.
+
+### Watch-outs
+
+- **Upstream file moves** (rare). Targeted checkout creates the new file but doesn't delete the old. After sync, scan for duplicates: `find sidecar -type f | sort`. If duplicates exist, `git rm` the old paths.
+- **Team-modified substrate code.** If your team modified `sidecar/` directly, targeted checkout clobbers those changes. Teams that modify the substrate should send upstream PRs, not maintain a fork.
+- **Schema breaking changes at v0.x bumps.** Watch upstream release notes; future schema additions may require manual `space.yaml` edits.
+
+---
+
+## 🧰 Managing skills — installing, distributing, updating
+
+TeamVault distributes three classes of skills. Different classes live in different places and update via different flows.
+
+### The three classes
+
+| Class | Examples | Lives in | Visible from |
+|---|---|---|---|
+| **Substrate skills** (talk to the sidecar) | `/teamvault-setup`, `/teamvault-publish`, `/teamvault-status`, `/teamvault-review`, `/teamvault-doctor` | Today: space dir `~/teamvault-<space>/.claude/skills/`. Recommended: also user-global `~/.claude/skills/` so they work from any directory. | The space dir today; everywhere after the workaround below |
+| **Project workflow skills** | `/pr-push`, `/pr-review`, `/pr-fix`, `/pr-pipeline` (also `code-structure` as a tailorable example) | Per-project `<project>/.claude/skills/` + committed to project repo | Only the project they're deployed in |
+| **Team-custom skills** (your team's additions) | e.g. `/title21-clinical-publish` | Space fork as source of truth → deployed to user-global OR per-project by intent | Depends on which class you put it in |
+
+### Substrate-skills gap + workaround (until v0.1.5)
+
+`teamvault-setup` deploys `pr-*` into your bound project (§7.5) but does **NOT** copy `teamvault-*` into user-global. That means slash commands like `/teamvault-doctor` only work from inside the space dir — not from your project repo. The MCP tools (`vault_search` etc.) DO work everywhere because MCP is registered with `--scope user`.
+
+**Today's workaround** — run this after install to make TeamVault slash commands available from any directory:
+
+```bash
+mkdir -p ~/.claude/skills
+for s in teamvault-publish teamvault-status teamvault-review teamvault-doctor; do
+  cp -r ~/teamvault-<your-space>/.claude/skills/$s ~/.claude/skills/$s
+done
+```
+
+Re-run after every upstream sync to keep the global copies current.
+
+**v0.1.5 roadmap:** `teamvault-setup` §7.6 will auto-deploy these to user-global on install; subsequent upstream-sync invocations refresh them.
+
+### Project workflow skills (PR flow) — status quo is right
+
+§7.5 of `teamvault-setup` asks during install: *"Deploy TeamVault's PR workflow skills into this project? [Y/n]"* Saying yes copies them from the space fork into `<this-project>/.claude/skills/` AND commits them to the project repo.
+
+**Why commit to the project repo?** Teammates who clone the project (and don't have TeamVault installed) still get the skills via git. The PR flow becomes part of the project, not gated on a TeamVault install.
+
+**Deploying to additional projects:** `cd <other-project>` and re-invoke `/teamvault-setup` from there. It'll skip the install steps (already installed) and just run the §7.5 deploy.
+
+**Pulling pr-* updates into projects after upstream sync:** `cp -r ~/teamvault-<your-space>/.claude/skills/pr-*` into each project where they're deployed, then commit + push.
+
+### Adding a team-custom skill — the lifecycle
+
+Say your team writes `/title21-clinical-publish` — a thin wrapper around TeamVault publish that adds clinical-context tagging.
+
+**1. Author writes the skill in the space fork:**
+
+```bash
+cd ~/teamvault-<your-space>
+mkdir -p .claude/skills/title21-clinical-publish
+# write SKILL.md inside that dir
+git add .claude/skills/title21-clinical-publish
+git commit -m "feat(skill): /title21-clinical-publish for clinical KB entries"
+git push
+```
+
+**2. Teammates pull from the space fork, then deploy by intent:**
+
+```bash
+cd ~/teamvault-<your-space>
+git pull
+
+# Substrate-style (visible everywhere):
+cp -r .claude/skills/title21-clinical-publish ~/.claude/skills/
+
+# OR project-style (embedded in a specific project's workflow):
+cd <target-project>
+cp -r ~/teamvault-<your-space>/.claude/skills/title21-clinical-publish .claude/skills/
+git add .claude/skills/title21-clinical-publish
+git commit -m "deploy skill: title21-clinical-publish"
+```
+
+**3. Updates:** author edits in the space fork → commits → pushes → teammates pull → re-run the deploy step. (v0.1.5+: a `/teamvault-deploy-skills` skill will automate the sync from space fork → user-global / per-project.)
+
+### Anti-patterns
+
+- ❌ **Distributing skills via Slack/email.** Manual file-shipping → drift between teammates. The space fork is the canonical source; pulls keep teammates in sync.
+- ❌ **Editing user-global copies directly.** They're deployment *targets*, not sources. Edit in the space fork, commit, push, redeploy.
+- ❌ **Forgetting to redeploy after upstream sync.** `teamvault-*` copies in `~/.claude/skills/` go stale when the space fork pulls upstream. Until v0.1.5 ships the auto-deploy, manually re-copy.
+- ❌ **Same skill in BOTH user-global AND a project's `.claude/skills/`.** Claude Code resolves project-local first, silently shadowing the user-global copy. Pick one location per skill.
 
 ---
 
