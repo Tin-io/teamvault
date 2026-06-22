@@ -1,0 +1,23 @@
+name: clickup
+version: 0.2.0
+description: >
+  ClickUp integration pack. Bundles the PR-linkage advisory reviewer
+  (confirms every PR references a ClickUp ticket — SOC 2 audit trail) with
+  workflow skills for the full ticket lifecycle (create / start / review /
+  close). Enable to get the linkage check via /teamvault-review AND the
+  skills auto-deployed to .claude/skills/ via /teamvault-setup.
+
+knowledge_topics:
+  - ticket-trail
+  - work-tracking
+  - soc2-evidence
+  - clickup-workflow
+
+contributions:
+  agents:
+    - path: agents/clickup-linkage-reviewer.md
+  reviewers:
+    - agent: clickup-linkage-reviewer
+      mode: advisory
+  skills:
+    - path: skills/start-clickup

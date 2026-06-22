@@ -9,6 +9,11 @@ v0.0 contract:
   - reviewers: agent + mode (advisory|blocking)
   - knowledge_topics (v0.1+): kebab-case domain names; the team's declaration
     of which domains they've accumulated KB on. Consumed by vault_packs().
+  - skills (v0.2+): list of paths to skill DIRECTORIES (each containing a
+    SKILL.md). Pack-shipped skills are not executed by the sidecar runtime —
+    they're manifested for /teamvault-setup to copy into .claude/skills/ at
+    install/upgrade time. Lets a pack be a self-contained domain capability
+    bundle (scrubbers + reviewers + workflow skills together).
 
 v0.1: ordering, depends_on, timeouts, mutually_exclusive_with, spawned agents.
 """
@@ -50,6 +55,11 @@ class Pack:
     # finalizing decisions in covered domains. NOT enforcement (no scrubber
     # runs against it).
     knowledge_topics: list[str] = field(default_factory=list)
+    # skills: list of pack-shipped skill DIRECTORIES (each containing SKILL.md).
+    # v0.2+ contract. Not executed by the sidecar — manifested for
+    # /teamvault-setup to copy into .claude/skills/ at install/upgrade time.
+    # Each Path points to a directory (e.g., `<pack_root>/skills/start-clickup`).
+    skills: list[Path] = field(default_factory=list)
 
 
 _TOPIC_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -111,6 +121,21 @@ def _load_pack(pack_root: Path) -> Pack | None:
         else:
             print(f"warning: pack {pack_name} declared invalid topic {topic!r} — dropped")
 
+    # skills: each entry is a directory path under the pack root. The directory
+    # must contain a SKILL.md for downstream deployment. Missing dirs / missing
+    # SKILL.md are dropped with a warning (pack still loads — skills are
+    # advisory manifest, not runtime-load-blocking).
+    skills: list[Path] = []
+    for sk in contribs.get("skills") or []:
+        sk_path = pack_root / sk["path"]
+        if not sk_path.is_dir():
+            print(f"warning: pack {pack_name} declared skill at {sk_path} but directory not found — dropped")
+            continue
+        if not (sk_path / "SKILL.md").exists():
+            print(f"warning: pack {pack_name} skill {sk_path} missing SKILL.md — dropped")
+            continue
+        skills.append(sk_path)
+
     return Pack(
         name=pack_name,
         version=doc.get("version", "0.0.0"),
@@ -120,6 +145,7 @@ def _load_pack(pack_root: Path) -> Pack | None:
         scrubbers=scrubbers,
         reviewers=reviewers,
         knowledge_topics=knowledge_topics,
+        skills=skills,
     )
 
 
@@ -218,7 +244,7 @@ class PackRuntime:
                     pof = "fail"
                     if rev.mode == "blocking":
                         overall = "block"
-                elif pack.name == "clickup-linkage":
+                elif pack.name == "clickup":
                     has_link = bool(re.search(r"(app\.)?clickup\.com[/\w?=&-]*", diff))
                     if has_link:
                         msg = "ClickUp linkage detected"
