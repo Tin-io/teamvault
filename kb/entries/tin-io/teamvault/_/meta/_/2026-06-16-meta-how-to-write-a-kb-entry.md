@@ -4,6 +4,19 @@ source: template
 confidence: 1.0
 author: tin-io/teamvault
 decision_type: meta
+
+# Light Palace taxonomy — this entry is tool meta-documentation, so it lives
+# under tin-io/teamvault (publishing org / product) with hall=meta. In v0.1.5+
+# /teamvault-publish auto-fills kingdom/palace/wing from the publishing repo's
+# repos.yaml entry; until then, set them manually so path + frontmatter mirror.
+kingdom: tin-io
+palace: teamvault
+wing: _
+hall: meta
+room: _
+
+tunnels: []
+
 tags:
   - meta
   - format
@@ -29,16 +42,35 @@ source: <provenance>                  # seed | manual | autopublish | template
 confidence: <0.0–1.0>                 # how confident is the author?
 author: <name | team handle>
 decision_type: <see types below>
+
+# Light Palace taxonomy. v0.1.x: set manually. v0.1.5+: auto-filled from the
+# publishing repo's repos.yaml entry. Path mirrors frontmatter:
+#   kb/entries/<kingdom>/<palace>/<wing>/<hall>/<room>/<slug>.md
+# See docs/KB-FOUNDATIONS.md for the full taxonomy reference.
+kingdom: <from space.yaml::kingdoms>  # e.g., your-org
+palace: <product / major system>      # free-form (emerges from use)
+wing: <feature domain>                # free-form
+hall: <knowledge type>                # free-form — architecture, conventions, lessons, debugging, meta, …
+room: <specific topic>                # free-form; use `_` to skip
+
+tunnels:                              # cross-references — slugs of related entries
+  - <slug-of-related-entry>
+
 tags:
   - <topic>
   - <another-topic>
 ```
 
-Planned extensions in v0.1+ (do not use yet):
+Planned in v0.1.5+ (use these fields today; auto-fill + soft validation ship then):
+
+- `kingdom`, `palace`, `wing` — auto-filled by `/teamvault-publish` from the binding repo's `repos.yaml` entry. Until v0.1.5 set them manually so the path mirrors frontmatter.
+- Soft validation: WARN at publish if `kingdom` isn't in `space.yaml::kingdoms`. Never blocks.
+
+Planned in v0.2+ (do NOT use yet):
 
 - `entry_type` — generalizes `decision_type` to a controlled vocabulary
 - `superseded_by` — filename of an entry that replaces this one
-- `related_entries` — list of filenames for explicit graph edges
+- `related_entries` — list of filenames for explicit graph edges (different from `tunnels`, which are inside the Palace taxonomy)
 
 The frontmatter is BOTH human-readable metadata AND structured data the sidecar indexes. It feeds the `vault_search` text index (BM25), participates in vector embeddings (because tags + title get prepended into the contextual prefix), and surfaces in retrieval results so an agent knows what kind of entry it just read.
 
@@ -88,8 +120,21 @@ Don't use double-bracket `[[wiki-link]]` syntax — TeamVault doesn't parse it. 
 ## Filename convention
 
 ```
-kb/entries/YYYY-MM-DD-<slug>.md
+kb/entries/<kingdom>/<palace>/<wing>/<hall>/<room>/YYYY-MM-DD-<slug>.md
 ```
+
+The path mirrors the entry's `kingdom/palace/wing/hall/room` frontmatter level-for-level. Use `_` for any level you want to skip; trailing levels can be omitted entirely (drop `room` if the hall is granular enough).
+
+- **v0.1.x:** set the path + frontmatter manually so they mirror.
+- **v0.1.5+:** `/teamvault-publish` auto-fills `kingdom/palace/wing` from the binding repo's `repos.yaml` entry; you only specify `hall/room/tunnels` (and the slug).
+
+### Examples
+
+- **Project entry** at `kb/entries/your-org/example-product/backend/architecture/_/2026-06-22-example-palace-organized-entry.md` — worked example in the master template.
+- **Tool meta-docs** (like this entry) live under the publishing org's kingdom: this entry's own path is `kb/entries/tin-io/teamvault/_/meta/_/2026-06-16-meta-how-to-write-a-kb-entry.md`.
+- **Entries from an unbound repo** can use `_` for all levels until the team's structure emerges: `kb/entries/_/_/_/_/_/<slug>.md`. `/teamvault-publish` will WARN that the publishing repo has no Palace binding but won't block.
+
+### Common rules
 
 - `YYYY-MM-DD` is the entry's creation date (matches the `created` frontmatter field's date).
 - `<slug>` is kebab-case, describes the topic. Keep it short (3–6 words).

@@ -11,10 +11,32 @@
 # Format: a YAML list. The file may start empty (no items below); append entries
 # below the marker line. Empty files parse as null and are treated as [].
 #
+# Per-entry fields:
+#   remote     — git remote URL of the project repo (required)
+#   workspace  — workspace name within the space (default "default")
+#   kingdom    — Light Palace kingdom this repo's entries belong to (must match
+#                an entry in `space.yaml::kingdoms`)
+#   palace     — Light Palace palace (free-form; product / major system)
+#   wing       — Light Palace wing (free-form; feature domain within the palace)
+#
+# kingdom/palace/wing are documentation-only in v0.1.x. v0.1.5+ adds auto-fill:
+# /teamvault-publish reads the publishing repo's entry from this file and fills
+# `kingdom/palace/wing` into the new KB entry's frontmatter automatically.
+# Set them today so the convention is visible; until auto-fill ships, entries
+# published from this repo should mirror these values in frontmatter by hand.
+#
+# See docs/KB-FOUNDATIONS.md for the canonical Mem Palace taxonomy reference.
+#
 # ---- BIND ENTRIES BELOW (one per project repo) ----
 #
 # Example:
 # - remote: https://github.com/your-org/example-repo
 #   workspace: default
+#   kingdom: your-org       # must appear in space.yaml::kingdoms
+#   palace: example-product
+#   wing: backend
 # - remote: git@github.com:your-org/another-repo.git
 #   workspace: default
+#   kingdom: your-org
+#   palace: another-product
+#   wing: frontend

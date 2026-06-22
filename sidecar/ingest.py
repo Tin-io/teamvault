@@ -355,7 +355,7 @@ def reindex_space(space: str) -> dict[str, int]:
         current_hashes: set[str] = set()
         path_chunks: dict[Path, list[Chunk]] = {}
         errors = 0
-        for path in sorted(entries_dir.glob("*.md")):
+        for path in sorted(entries_dir.rglob("*.md")):
             try:
                 chunks = chunk_entry(path)
                 current_paths.add(str(path))
