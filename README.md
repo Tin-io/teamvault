@@ -22,28 +22,38 @@
 
 ## 🧩 How it works (in 2 paragraphs)
 
-Your team forks this repo as a "space" (or stays in this master template). Each dev clones the space; a local Python sidecar watches the clone, re-indexes `kb/entries/*.md` on `git pull` into a hybrid (BM25 + vector + RRF) search index, and exposes three MCP tools to Claude Code or Codex: `vault_search`, `vault_publish`, `vault_status`. One teammate publishes a decision; ~60 seconds later every teammate's agent can search it. Humans read the same markdown directly in GitHub.
+Your team forks this repo as a "space" (or stays in this master template). Each dev clones the space; a local Python sidecar watches the clone, re-indexes `kb/entries/**/*.md` recursively on `git pull` into a hybrid (BM25 + vector + RRF) search index, and exposes six MCP tools to Claude Code or Codex: `vault_search`, `vault_publish`, `vault_status`, `vault_packs`, `vault_cite`, `vault_query_log`. One teammate publishes a decision; ~60 seconds later every teammate's agent can search it. Humans read the same markdown directly in GitHub.
 
 **Packs** extend the runtime — drop a `packs/hipaa-reference/` directory with regex patterns + a reviewer agent prompt, and every PR gets reviewed for PHI leaks (blocking). Drop a `packs/clickup-linkage/` or `packs/jira-linkage/` directory and PRs without ticket links get flagged. The runtime is generic; what your team cares about is declared in packs you enable in `space.yaml`.
 
 ## 🚀 Install
 
+> 👥 **The model:** your team forks `tin-io/teamvault` into your org **once** (e.g. `your-org/teamvault-<team-name>`). That fork is your team's **space** — all KB entries, all pack config, all binds live there. Every teammate clones the **fork** (not master) and runs the sidecar against it. Master stays as the upstream you periodically pull updates from. The setup skill handles both the first-time-fork case and the joining-an-existing-fork case from the same paste-in below.
+
 Paste this into Claude Code or Codex from inside the project repo you want to bind:
 
 ```
-Install TeamVault for this project.
+Install TeamVault on this machine and bind it to the project repo I'm currently in.
 
-1. Clone the master template to a temp dir:
+1. Clone the master template to /tmp ONLY so the setup skill is readable —
+   /tmp/teamvault-master is NOT my working tree, it's just where the agent
+   reads SKILL.md from:
    git clone https://github.com/tin-io/teamvault /tmp/teamvault-master
 
 2. Read /tmp/teamvault-master/.claude/skills/teamvault-setup/SKILL.md and execute it.
 
-3. When the skill asks for the team space URL, use your team's fork URL.
+3. Ask me whatever you need to proceed — the skill will check whether my team
+   already has a TeamVault space fork I should clone (I'll give you the URL),
+   or whether I'm the first dev and need to fork tin-io/teamvault into our
+   org first. Then it'll ask which packs to enable, whether to bind this
+   project repo, and whether to deploy the optional PR workflow skills.
 
-4. Confirm install completion by running the MCP `vault_status` tool.
+4. When done, confirm by:
+   - calling the MCP `vault_status` tool and showing me the output
+   - showing me a `vault_search` query result
 ```
 
-The agent walks the install in ~10 min on first run (the slow part is downloading `torch` + the Nomic embedding model). See [SETUP_PROMPT.md](SETUP_PROMPT.md) for the canonical paste-in prompt and [USER_GUIDE — Quick start](docs/USER_GUIDE.md#quick-start) for prerequisites + step-by-step expectations.
+The agent walks the install in ~10 min on first run (the slow part is downloading `torch` + the Nomic embedding model). See [SETUP_PROMPT.md](SETUP_PROMPT.md) for the canonical paste-in prompt and [USER_GUIDE — Quick start](docs/USER_GUIDE.md#quick-start) for prerequisites + step-by-step expectations. After install: `/teamvault-status` for a quick health snapshot; `/teamvault-doctor` for a layered Liveness / Structure / Data diagnostic + remediation menu when something's off.
 
 ## 📚 Documentation
 
@@ -60,6 +70,7 @@ If you want to skip directly to a specific topic:
 | 📚 The underlying KB pattern catalog this builds on | [KB-FOUNDATIONS.md](docs/KB-FOUNDATIONS.md) |
 | 🛠️ Day-of failure modes (symptom → check → fix) | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | 🧱 Build your own pack | [CONTRIBUTING_PACKS.md](docs/CONTRIBUTING_PACKS.md) |
+| 🔄 Maintain your fork — upstream sync + skill management | [USER_GUIDE.md — Upstream sync](docs/USER_GUIDE.md#-upstream-sync--pulling-improvements-from-tin-ioteamvault-into-your-teams-fork) |
 | 🗺️ What's coming in v0.1 / v0.2 / v0.3 | [ROADMAP.md](docs/ROADMAP.md) |
 | 🤖 How this repo was built autonomously over a 24h Sabbath window | [AUTONOMOUS_BUILD_METHODOLOGY.md](docs/AUTONOMOUS_BUILD_METHODOLOGY.md) |
 
@@ -71,7 +82,7 @@ sidecar/                 🐍 Python FastAPI sidecar (localhost:8100) + MCP shim
 packs/                   🧩 Reference packs (hipaa-reference, clickup-linkage, jira-linkage)
 .claude/skills/          ⚡ Slash commands the install registers with Claude Code
 .github/workflows/       🤖 GHA workflow for PR-stage pack-runtime review
-kb/entries/              📝 Team KB markdown — the source of truth (master ships one meta-template entry; teams add their own)
+kb/entries/              📝 Team KB markdown — the source of truth. Organized by Memory Palace path (`<kingdom>/<palace>/<wing>/<hall>/<room>/<slug>.md`); master ships a meta entry + a sample entry at canonical Palace paths
 docs/                    📚 All documentation (see Documentation section above)
 .build/                  🛠️ Build/test scaffolding (local; build journal + plans are gitignored)
 SETUP_PROMPT.md          🚀 Canonical paste-this-prompt for install
