@@ -5,11 +5,13 @@ dev/test environments redirect via env vars so the real user account is
 never touched.
 
 Env vars:
-    TEAMVAULT_HOME       Root for sidecar state. Default ~/.teamvault/
-    TEAMVAULT_PORT       HTTP port for the sidecar. Default 8100
-    TEAMVAULT_SPACE_ROOT Path to the space clone the sidecar watches.
-                         If unset, sidecar boots in standby (only /healthz works).
-    TEAMVAULT_DRY_RUN    If truthy, skip git push on publish. Used in tests.
+    TEAMVAULT_HOME            Root for sidecar state. Default ~/.teamvault/
+    TEAMVAULT_PORT            HTTP port for the sidecar. Default 8100
+    TEAMVAULT_SPACE_ROOT      Path to the space clone the sidecar watches.
+                              If unset, sidecar boots in standby (only /healthz works).
+    TEAMVAULT_DRY_RUN         If truthy, skip git push on publish. Used in tests.
+    TEAMVAULT_GIT_TIMEOUT_S   Hard timeout (seconds) for git fetch/pull in the
+                              git_sync loop. Default 30.
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ _space_root_env = os.environ.get("TEAMVAULT_SPACE_ROOT")
 TEAMVAULT_SPACE_ROOT: Path | None = _expand(_space_root_env) if _space_root_env else None
 
 TEAMVAULT_DRY_RUN: bool = _bool_env("TEAMVAULT_DRY_RUN")
+TEAMVAULT_GIT_TIMEOUT_S: int = int(os.environ.get("TEAMVAULT_GIT_TIMEOUT_S", "30"))
 
 
 def space_state_path(space_name: str) -> Path:
@@ -59,4 +62,5 @@ def summary() -> dict:
         "port": TEAMVAULT_PORT,
         "space_root": str(TEAMVAULT_SPACE_ROOT) if TEAMVAULT_SPACE_ROOT else None,
         "dry_run": TEAMVAULT_DRY_RUN,
+        "git_timeout_s": TEAMVAULT_GIT_TIMEOUT_S,
     }

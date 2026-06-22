@@ -2,14 +2,16 @@
 
 Endpoints
 ---------
-- GET  /healthz    status + version + per-space sync state
-- GET  /packs      enabled packs + their knowledge_topics + mode_summary
-- POST /search     hybrid BM25 + vector + RRF search (returns query_id)
-- POST /publish    write a KB entry, commit, push, reindex
-- POST /reindex    force reindex of a space
-- POST /review     pack-runtime fan-out on a diff
-- POST /cite       record which KB entries informed (or didn't inform) a decision
-- GET  /query_log  read filtered audit-log rows + chain_ok
+- GET  /healthz          status + version + per-space sync state
+- GET  /readyz           K8s-style readiness (200 only when serving usefully)
+- GET  /packs            enabled packs + their knowledge_topics + mode_summary
+- POST /search           hybrid BM25 + vector + RRF search (returns query_id)
+- POST /publish          write a KB entry, commit, push, reindex
+- POST /reindex          force reindex of a space
+- POST /review           pack-runtime fan-out on a diff
+- POST /cite             record which KB entries informed (or didn't inform) a decision
+- GET  /query_log        read filtered audit-log rows + chain_ok
+- POST /confirm-rewind   clear the git_sync halt flag for a space
 
 Run
 ---
@@ -50,12 +52,15 @@ app = FastAPI(
 
 class SpaceState(BaseModel):
     name: str
-    last_pull: str | None = None  # ISO 8601 UTC
-    last_error: str | None = None
+    last_pull: str | None = None  # ISO 8601 UTC — last successful git_sync poll
+    last_error: str | None = None  # Last git_sync error; cleared on success
     # Set to the ISO timestamp of the last successful reindex. /readyz uses
     # this to signal readiness (distinct from /healthz, which signals only
     # process liveness — the K8s liveness-vs-readiness pattern).
     last_indexed: str | None = None
+    # Non-null when git_sync has halted on a state requiring human acknowledgement
+    # (upstream history rewrote, dirty working tree). Cleared by POST /confirm-rewind.
+    halted_reason: str | None = None
 
 
 _spaces: dict[str, SpaceState] = {}
@@ -181,6 +186,15 @@ class QueryLogResponse(BaseModel):
     # True if audit.verify_chain over the FULL log (not the filtered slice)
     # returns ok. Surfaces tamper detection to the consumer.
     chain_ok: bool
+
+
+class ConfirmRewindRequest(BaseModel):
+    space: str
+
+
+class ConfirmRewindResponse(BaseModel):
+    cleared: bool  # True iff a halt flag was actually cleared
+    space: str
 
 
 # Default action whitelist for /query_log if no explicit filter is provided.
@@ -505,6 +519,27 @@ def query_log_endpoint(
     return QueryLogResponse(rows=rows, chain_ok=chain_ok)
 
 
+@app.post("/confirm-rewind", response_model=ConfirmRewindResponse)
+def confirm_rewind_endpoint(req: ConfirmRewindRequest) -> ConfirmRewindResponse:
+    """Clear the git_sync halt flag for a space so the loop resumes.
+
+    Set by `_sync_once` when it hits a state requiring human acknowledgement
+    (upstream history rewrote, dirty working tree). The corresponding skill
+    (`/teamvault-confirm-rewind`) invokes this after the user resolves the
+    underlying issue (committed/stashed local changes, or accepted the
+    upstream rewrite). Clears both the in-memory halt flag and the
+    `halted_reason` / `last_error` fields on the SpaceState so /healthz
+    reflects the resume immediately without waiting for the next sync tick.
+    """
+    from sidecar import git_sync
+
+    cleared = git_sync.clear_halt(req.space)
+    if req.space in _spaces:
+        _spaces[req.space].halted_reason = None
+        _spaces[req.space].last_error = None
+    return ConfirmRewindResponse(cleared=cleared, space=req.space)
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
@@ -606,7 +641,36 @@ def _startup() -> None:
         try:
             from sidecar import git_sync
 
-            git_sync.start(config.TEAMVAULT_SPACE_ROOT, interval=60)
+            # Single-space v0.0 — the only registered space is the one we just
+            # read from space.yaml. Pass its name + a callback that mirrors
+            # SyncResult into _spaces so /healthz surfaces last_pull /
+            # last_error / halted_reason without git_sync touching app state
+            # directly.
+            registered = next(iter(_spaces), None)
+            if registered:
+                git_sync.start(
+                    config.TEAMVAULT_SPACE_ROOT,
+                    space_name=registered,
+                    interval=60,
+                    on_sync_state=_apply_sync_state,
+                )
         except Exception as e:
             # Don't crash sidecar boot on git_sync setup error; log it instead.
             log.warning("git_sync failed to start: %s", e)
+
+
+def _apply_sync_state(space_name: str, result: Any) -> None:
+    """Mirror a git_sync SyncResult into SpaceState for /healthz surfacing.
+
+    Lives in app.py (not git_sync.py) so git_sync stays free of any direct
+    reference to _spaces / SpaceState. The `result: Any` type-hint avoids
+    importing SyncResult at module scope (lazy-import keeps the startup
+    dependency arrow one-way: app → git_sync, never the reverse).
+    """
+    if space_name not in _spaces:
+        return
+    st = _spaces[space_name]
+    if result.last_pull:
+        st.last_pull = result.last_pull
+    st.last_error = result.error
+    st.halted_reason = result.halt
