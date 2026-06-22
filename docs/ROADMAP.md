@@ -3,9 +3,54 @@
 > ✨ Structured deferral list from the v0.0 build. Each item is sized + tagged + sourced so post-v0.0 planning is mechanical.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-planning-orange?style=flat-square" alt="Status: planning">
-  <img src="https://img.shields.io/badge/P0%3A%204%20%C2%B7%20P1%3A%207%20%C2%B7%20P2%2B%3A%206-555?style=flat-square" alt="Tier counts">
+  <img src="https://img.shields.io/badge/status-active%20sprint%20%E2%86%92%20Wed%206%2F24-blue?style=flat-square" alt="Active sprint to Wed 6/24">
 </p>
+
+## 🚀 2026-06-22 Wed-AM-deadline sprint
+
+Install meeting with the first design-partner team pushed to **Wed 6/24 AM**. Substrate must be install-ready and HIPAA-defensible by then. Day-by-day operational plan in `HANDOFF.md` (gitignored).
+
+**✅ SHIPPED 2026-06-21/22** (PRs #1–#9 in `main`):
+
+- ROADMAP+STRATEGY reconcile (#1)
+- pr-* skill family + `code-structure` reference (#2)
+- Install polish — conversational SETUP_PROMPT + SKILL.md hardening (#3)
+- **P1.13** /readyz + PID lockfile · **P1.4** structured logs + rotation (#4)
+- **P1.2** /teamvault-doctor skill (#5)
+- Memory Palace taxonomy bridged into templates + recursive ingest (#6)
+- v0.1.x docs refresh + fork model + maintenance guides (#7)
+- Setup §7.6 substrate-skill auto-deploy (#8)
+- /discover → /agent-board rename + pr-push base-branch generalization (#9)
+
+**🔄 IN-FLIGHT — Tue 6/23** (~10–12h focused, in order):
+
+1. **P1.1** `git_sync` UX hardening (~4h) — last Week-1 reliability item
+2. **P0.2** pre-commit + pre-receive scrubber hooks (~2h) — closes the "dev edits `kb/` directly" PHI leak
+3. **P1.6** temporal decay in ranking (~2h) — recency multiplier before KB grows
+4. **P0.4** `hipaa-reference` pack repo split (~2h) — legal + optics
+5. **P0.6** fail-closed scrubber contract enumeration (~3h) — HIPAA hardening
+
+**🔄 IN-FLIGHT — Wed 6/24 AM** (~3h pre-meeting):
+
+6. **P0.7** data-egress invariants for `compliance: true` spaces (~3h)
+7. **P1.16** `/teamvault-cost` skill (~2h) — HIPAA reviewer fan-out is heaviest cost vector
+8. Final dress rehearsal — clean macOS sandbox install end-to-end
+
+**Stretch (if Tue ahead of schedule):**
+
+- **P2.5** `/agent-board` cross-repo agent comms skeleton (~6h)
+
+**⏭️ Post-meeting (v0.1.5+):**
+
+- **P0.3** legal review of HIPAA pack disclaimer — worth starting the lawyer conversation Tue so it's in flight
+- **P0.8** breach-response runbook (pairs with P0.3)
+- **Light Palace auto-fill cascade** — `/teamvault-publish` auto-fills `kingdom/palace/wing` from `repos.yaml`; soft WARN if entry's `kingdom` ∉ `space.yaml::kingdoms`
+- `/teamvault-deploy-skills` standalone skill (meanwhile re-run `teamvault-setup` to trigger §7.6)
+- `/teamvault-upstream-sync` (P2.14), `/teamvault-pack-upgrade` (P2.13)
+- Multi-space sidecar (pulled forward from P3)
+- `get_company_context` MCP tool (P2.12)
+
+---
 
 ## 🏷️ Tags
 - 🛡️ **[HIPAA]** — touches HIPAA Security Rule controls or pack-compliance guarantees
@@ -30,14 +75,26 @@
 
 ---
 
-## ✅ Shipped after v0.0 (reconciled 2026-06-20)
+## ✅ Shipped after v0.0 (reconciled 2026-06-22)
 
-These were built post-base-v0.0 and merged into `main` (commit `7c68bbe`), but the tiers below were authored *before* that — so several items are marked DONE inline. Reconciled 2026-06-20 against what actually shipped.
+Built post-base-v0.0 and merged into `main`. Tiers below were authored *before* most of these landed — so several items are marked DONE inline. Reconciled 2026-06-22 against PRs #1–#9.
 
+**Reconciled 2026-06-20 (the original four):**
 - **P0.1 — Audit log** ✅ (`sidecar/audit.py`; JSONL + SHA-256 tamper-evident hash chain).
-- **P1.5 — Contextual retrieval prefixes** ✅ (static variant, `sidecar/ingest.py`; LLM-generated variant still pending).
+- **P1.5 — Contextual retrieval prefixes (static)** ✅ (`sidecar/ingest.py`; LLM-generated variant still pending).
 - **Pack `knowledge_topics`** ✅ (PACK.yaml schema + loader; was not previously roadmapped).
 - **`vault_packs` / `vault_cite` / `vault_query_log` MCP tools + `/packs` `/cite` `/query_log` endpoints** ✅ (the search→cite→audit loop; was not previously roadmapped).
+
+**Shipped 2026-06-21/22 (PRs #2–#9):**
+- **`pr-*` skill family + `code-structure` reference** ✅ PR #2 — `pr-push`, `pr-review`, `pr-fix`, `pr-pipeline`; pre-PR pack-runtime via `/teamvault-review`.
+- **Conversational install + SKILL.md hardening** ✅ PR #3 — 5-question SETUP_PROMPT; §1 fork-flow first-class; §2 commit on space.yaml rename; §2.5 enabled-packs confirm; §3 bind-confirm; §5 plist-heredoc safety; §7.5 `$PROJECT_DIR` fix.
+- **P1.13 — `/readyz` + PID lockfile** ✅ PR #4 — `SpaceState.last_indexed`; `fcntl.flock` on `$TEAMVAULT_HOME/sidecar.pid`; refuses second sidecar with recovery hint.
+- **P1.4 — Structured logs + rotation** ✅ PR #4 — `sidecar/logging_setup.py`; `TimedRotatingFileHandler` (UTC midnight, 7-day retention); per-space `recent_errors` deque surfaced via `/healthz`.
+- **P1.2 — `/teamvault-doctor` skill** ✅ PR #5 — 3-layer Liveness/Structure/Data diagnostics + numbered remediation menu; support-bundle scrubbed of `kb/` / `vault.lance` / `audit.log` content.
+- **Memory Palace taxonomy bridge** ✅ PR #6 — `space.yaml::kingdoms`, `repos.yaml` per-repo `kingdom/palace/wing` defaults, recursive ingest via `entries_dir.rglob("*.md")`, meta + sample KB entries.
+- **v0.1.x docs refresh + fork model + maintenance guides** ✅ PR #7 — README/USER_GUIDE/CONTRACTS/TROUBLESHOOTING refreshed against shipped reality.
+- **Setup §7.6 substrate-skill auto-deploy** ✅ PR #8 — re-running `teamvault-setup` refreshes `~/.claude/skills/teamvault-*`.
+- **`/discover` → `/agent-board` rename + pr-push base-branch generalization** ✅ PR #9 — P2.5 section title; per-space `agent-board/` dir; `TEAMVAULT_PR_BASE_BRANCH` env var replaces hardcoded `staging` resolver.
 
 ---
 
@@ -99,20 +156,22 @@ Source: Code critic F6 (already wired in Phase 2), Sec critic F10, R3 F1+F4.
 - `git fetch`/`pull` timeout (30s) — currently can hang indefinitely
 - Surface auth failures with `gh auth refresh` suggestion
 
-### 🩺 P1.2 — `/teamvault-doctor` [DX] [OPS] [SIZE: S ~2h]
+### ✅ P1.2 — `/teamvault-doctor` — SHIPPED PR #5 [DX] [OPS] [SIZE: S ~2h]
 
-Source: R7 F1, DX critic.
+Source: R7 F1, DX critic. Lives at `.claude/skills/teamvault-doctor/SKILL.md`.
 
-Beyond `/teamvault-status` (read-only diagnostic shipped in v0.0). Doctor runs deeper checks + offers remediation:
-- Verify launchd plist matches expected shape
-- Verify `claude mcp list | grep teamvault` matches the active sidecar path
-- Probe sentence-transformers cache exists and is non-empty
-- Probe disk free
-- Bundle logs + registry + config into a tarball for support
+3-layer diagnostic:
+- **Liveness** — process + PID-lockfile consistency, launchd job state, `/healthz` + `/readyz`
+- **Structure** — plist shape (literal `${...}` check from the P1.13 §5 plist-heredoc safety guidance), MCP-vs-sidecar path drift, `nomic-embed-text-v1.5` cache, disk free
+- **Data** — `vault.lance` + `fts.db` per space, `recent_errors` tail (from P1.4), audit-chain integrity (`chain_ok`)
 
-### 🧰 P1.3 — Pre-baked wheelhouse [DX] [SIZE: M ~3h]
+Outputs a consolidated verdict table + numbered remediation menu (R1 reindex, R2 kickstart, R3 build support bundle, R4 exit). Every remediation requires explicit confirmation — guide, not autopilot. Support bundle (R3) explicitly scrubbed of `kb/`, `vault.lance`, `audit.log` content so it's safe to share with maintainers without HIPAA review.
 
-Source: DX critic F3, dress rehearsal observation.
+### 🚫 P1.3 — Pre-baked wheelhouse — REJECTED 2026-06-21 (in-repo mechanism) [DX] [SIZE: M ~3h]
+
+> **Decision 2026-06-21:** Maintainer rejected the in-repo wheelhouse cache. Quote: *"This is code that we are importing and using. Why replicate it and put it in this codebase and bloat it? ... Keep our repo to the minimum. Everyone who uses it will have the internet."* Revisit only if install friction returns AND a non-bloat distribution path doesn't materialize. The "ship a pre-built sidecar" use case is covered by **P2.2 (split distribution / binary package)** instead.
+
+Source: DX critic F3, dress rehearsal observation. *Original proposal preserved below for context.*
 
 The 2.5GB torch + 547MB Nomic install is the slowest step. Pre-bake:
 - Master template ships a `make warm-cache` target that downloads platform-specific wheels into `wheelhouse/`
@@ -121,11 +180,15 @@ The 2.5GB torch + 547MB Nomic install is the slowest step. Pre-bake:
 
 Caveat: platform-specific (arm64 vs x86_64); need separate wheelhouses or use `pip download --platform`.
 
-### 📝 P1.4 — Structured logs + rotation [OPS] [SIZE: S ~2h]
+### ✅ P1.4 — Structured logs + rotation — SHIPPED PR #4 [OPS] [SIZE: S ~2h]
 
-Source: R7 F3.
+Source: R7 F3. Lives at `sidecar/logging_setup.py`.
 
-`~/.teamvault/logs/sidecar.log` JSON-per-line. Daily rotation, 7-day retention. Per-space sub-loggers. Surface in `/teamvault-status` (last 5 errors per space).
+- **JSON-per-line file logs** at `~/.teamvault/logs/sidecar.log` via `TimedRotatingFileHandler`, rolls at UTC midnight, 7-day retention.
+- **`JsonFormatter`** with stable keys: `ts`, `level`, `logger`, `message`, optional `space`, optional `exc`.
+- **stderr handler** for WARNING+ → launchd captures to `sidecar.err.log`.
+- **`RecentErrorsHandler`** keeps last 5 WARNING+ per space in an in-memory deque; surfaced via `/healthz.recent_errors`. Unscoped records bucket under `__sidecar__`.
+- 5 `print()` warning paths in `sidecar/app.py` converted to `log.warning(..., extra={"space": ...})`.
 
 ### 🐧 P1.8 — Linux native install (systemd user unit) [DX] [OPS] [SIZE: S ~2-3h]
 
@@ -314,25 +377,36 @@ Source: USER_GUIDE.md / TROUBLESHOOTING.md OS-support commitment.
 
 ## 📋 Recommended sequencing (4-6 weeks)
 
+> **2026-06-22 note:** Compressed for the Wed-AM design-partner install meeting — most of Week 1 and the key Week-2 HIPAA items collapse into this week's 2-day sprint (see top of file). Original pacing below preserved for post-meeting iteration.
+
 **Week 1 (first-team bedding-in):**
-- P0.1 audit log (skeleton enough to satisfy a §164.312(b) question)
-- P0.2 pre-commit hooks (close the kb/ direct-edit leak)
-- P1.1 git_sync UX hardening (early ops issues surface here)
+- ✅ P0.1 audit log
+- 🔄 P0.2 pre-commit hooks (close the kb/ direct-edit leak)
+- 🔄 P1.1 git_sync UX hardening (early ops issues surface here)
+- ✅ P1.2 /teamvault-doctor
+- ✅ P1.4 structured logs + rotation
+- ✅ P1.13 /readyz + PID-lockfile
 
 **Week 2 (second design partner):**
-- P0.3 legal review (parallel)
-- P0.4 hipaa-reference repo split (separation is cheap once you decide)
-- P1.5 contextual prefixes (visible retrieval quality lift)
+- ⏭️ P0.3 legal review (parallel; needs lawyer — start Tue)
+- 🔄 P0.4 hipaa-reference repo split (separation is cheap once you decide)
+- ✅ P1.5 contextual prefixes (static; LLM-gen variant still pending)
+- 🔄 P0.6 fail-closed scrubber contract enumeration
+- 🔄 P0.7 data-egress invariants for `compliance: true` spaces
+- 🔄 P1.6 temporal decay in ranking
+- 🔄 P1.16 /teamvault-cost
 
 **Weeks 3-4 (broader OSS prep):**
 - P2.1 packs.registry.json (sets the contributor surface)
 - P2.2 split distribution (load-bearing for OSS)
-- P1.3 wheelhouse (visible install lift)
+- ~~P1.3 wheelhouse~~ — 🚫 REJECTED 2026-06-21 (in-repo mechanism); pre-built sidecar covered by P2.2
 
 **Week 5-6 (v0.2 milestone):**
-- P2.5 /agent-board skeleton
+- P2.5 /agent-board skeleton (stretch in this sprint — may land Tue if ahead of schedule)
 - P2.3 Codex adapter stub
 - P2.4 pack contract extensions
+
+*Legend: ✅ shipped · 🔄 in-flight this sprint · ⏭️ post-meeting · 🚫 rejected*
 
 ---
 
@@ -354,7 +428,7 @@ A second pass over `ARCHITECTURE_V2_REVIEW.md` against this roadmap surfaced arc
 - **P1.10 — Retrieval observability [IR] [OPS] [SIZE: M ~4h]** — `retrieval.log.jsonl` per query: input, BM25 + vector top-K, RRF fusion, decay multipliers, final ranks. `/teamvault-debug-search` replays a query against the log for "why did THAT rank where it did?" debugging.
 - **P1.11 — Resource budget enforcement [OPS] [SIZE: M ~3h]** — RSS < 1GB steady-state target; embedding batch size cap (env: `TEAMVAULT_EMBED_BATCH`); max 2 concurrent space pulls; file-watcher debounce ≥ 2s; pre-flight disk-free check (<2GB free → refuse reindex). Document in TROUBLESHOOTING.
 - **P1.12 — Pull jitter + per-space exponential backoff [OPS] [SIZE: S ~2h]** — Per-space ± 10s pull jitter (avoid thundering herd on shared remotes). Backoff schedule 60s → 5m → 30m → 1h cap on consecutive errors. `space.last_error` carries reason + next-attempt time. Soft scaling-limit guidance documented at N=10 spaces.
-- **P1.13 — `/healthz` + `/readyz` + PID-lockfile [OPS] [SIZE: S ~2h]** — `/readyz` reports startup completion separately from liveness. PID-lockfile (`~/.teamvault/sidecar.pid` via `flock`) prevents two sidecar processes contending on the same indexes. Atomic JSON writes for `registry.json`. Graceful-shutdown marker on clean exit.
+- **✅ P1.13 — `/healthz` + `/readyz` + PID-lockfile — SHIPPED PR #4** [OPS] [SIZE: S ~2h] — `sidecar/app.py`. `GET /readyz` distinct from `/healthz`; returns 200 only when ≥1 space registered AND has completed a reindex AND no recorded error (else 503 with structured `reason`). `SpaceState.last_indexed` ISO 8601 timestamp drives readiness. PID lockfile via `fcntl.flock` at `$TEAMVAULT_HOME/sidecar.pid` refuses a second sidecar with recovery instructions + `sys.exit(1)`. Sub-items NOT shipped: atomic JSON writes (no `registry.json` exists in v0.0 — moot), graceful-shutdown marker (low value alone).
 - **P1.14 — Transactional pack reload + CI pack linter [OPS] [ARCH] [SIZE: M ~4h]** — Validate pulled pack changes in a staging area; swap atomically on success; on parse failure, keep prior valid config + log + surface to `/healthz`. Ship `teamvault-pack-lint.yml` GHA pack linter to run on PR in space repos before any pack change merges.
 - **P1.15 — Slug-collision behavior + worktree-based publish [DX] [OPS] [SIZE: S ~2h]** — On publish-time slug collision: append content-addressed suffix. On `git push` rejected: pull-rebase-retry with backoff. Run the publish in a separate worktree so it can't race with the indexer's working tree.
 - **P1.16 — `/teamvault-cost` skill [DX] [SIZE: S ~2h]** — Per-invocation cumulative token spend across pack reviewers. Useful both for cost awareness and for tuning per-reviewer token budgets (P2.4).
