@@ -23,7 +23,7 @@ Liveness probe — always returns 200 if the app process is up.
   "version": "0.0.1",
   "config": {"home": "...", "port": 8100, "space_root": "...", "dry_run": false},
   "spaces": [
-    {"name": "<space>", "last_pull": "<iso8601 | null>", "last_error": "<str | null>", "last_indexed": "<iso8601 | null>"}
+    {"name": "<space>", "last_pull": "<iso8601 | null>", "last_error": "<str | null>", "last_indexed": "<iso8601 | null>", "halted_reason": "<str | null>"}
   ],
   "recent_errors": {
     "<space>": [{"ts": "<iso8601>", "level": "warning|error", "message": "<str>", "logger": "<str>"}],
@@ -33,6 +33,10 @@ Liveness probe — always returns 200 if the app process is up.
 ```
 
 `recent_errors` (added in P1.4) is an in-memory tail of the last 5 WARNING+ records per space. Unscoped records (emitted before a space is registered, e.g. startup errors) bucket under `__sidecar__`.
+
+`last_pull` (added in P1.1) is the ISO timestamp of the last *successful* `git_sync` cycle for the space — includes the no-op same-SHA case, not just cycles that actually pulled new commits. Null until the first successful cycle completes (≤ one `git_sync` interval after sidecar start).
+
+`halted_reason` (added in P1.1) is non-null when `git_sync` has halted on a state requiring human acknowledgement: upstream history rewrote (force-push) or local working tree dirty. The loop short-circuits subsequent cycles until cleared via `POST /confirm-rewind`. `last_error` mirrors `halted_reason` while halted.
 
 ### `GET /readyz`
 
@@ -67,6 +71,13 @@ Readiness probe distinct from `/healthz`. Returns 200 only when at least one spa
 
 - **Request:** `{"space": "<str>", "diff": "<unified diff>"}`
 - **Response:** `{"overall": "pass | block", "individual": [{"pack": "<str>", "agent": "<str>", "mode": "<str>", "pass_or_fail": "<str>", "message": "<str>"}]}`
+
+### `POST /confirm-rewind`
+
+Clear the `git_sync` halt flag for a space so the loop resumes. Invoked by the `/teamvault-confirm-rewind` skill after the user has resolved the underlying issue (committed/stashed local changes, or accepted the upstream rewrite).
+
+- **Request:** `{"space": "<str>"}`
+- **Response:** `{"cleared": <bool>, "space": "<str>"}` — `cleared` is true iff a halt flag was actually cleared (false = nothing was halted; idempotent no-op). Also zeros the `halted_reason` and `last_error` fields on the SpaceState so `/healthz` reflects the resume immediately without waiting for the next sync tick.
 
 ---
 
@@ -194,6 +205,7 @@ The sidecar's reindex walks `kb/entries/` recursively (`Path.rglob("*.md")`), so
 | `TEAMVAULT_PORT` | `8100` | Sidecar HTTP port. |
 | `TEAMVAULT_SPACE_ROOT` | `~/teamvault-<space>/` | Path to the space clone the sidecar watches. |
 | `TEAMVAULT_DRY_RUN` | unset | If set, skip git push (commit only). Use for tests. |
+| `TEAMVAULT_GIT_TIMEOUT_S` | `30` | Hard timeout (seconds) for `git fetch` / `git pull` in the `git_sync` loop. |
 
 ---
 
