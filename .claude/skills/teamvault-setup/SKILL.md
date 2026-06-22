@@ -363,6 +363,50 @@ project should write its own `code-structure` tuned to its conventions
 — copying the example verbatim into a non-teamvault project would
 inject wrong architectural guidance.
 
+### 7.6. Deploy TeamVault substrate skills to user-global
+
+The `teamvault-*` slash commands (`/teamvault-publish`, `/teamvault-status`, `/teamvault-review`, `/teamvault-doctor`) need to be visible from any directory — not just from inside the space dir — so devs can invoke them while working in bound project repos. Claude Code looks in `~/.claude/skills/` for user-global skills regardless of cwd. Copy them from the space fork into `~/.claude/skills/`. Re-runnable: ask before overwriting any existing destination (preserves per-team customizations).
+
+```bash
+mkdir -p "$HOME/.claude/skills"
+
+SUBSTRATE_SKILLS=(teamvault-publish teamvault-status teamvault-review teamvault-doctor)
+DEPLOYED_GLOBAL=()
+SKIPPED_GLOBAL=()
+
+for NAME in "${SUBSTRATE_SKILLS[@]}"; do
+    SRC="$SPACE_DIR/.claude/skills/$NAME"
+    DST="$HOME/.claude/skills/$NAME"
+
+    if [ ! -d "$SRC" ]; then
+        SKIPPED_GLOBAL+=("$NAME (not in fork — skipping)")
+        continue
+    fi
+
+    if [ -d "$DST" ]; then
+        # Ask the user — default Y; preserve customizations if they say n.
+        echo "  $DST already exists. Overwrite with the version from the space fork? [Y/n]"
+        # If user answers no: SKIPPED_GLOBAL+=("$NAME (existing preserved)"); continue
+        rm -rf "$DST"
+    fi
+
+    cp -r "$SRC" "$DST"
+    DEPLOYED_GLOBAL+=("$NAME")
+done
+```
+
+Confirm to the user:
+
+- Which substrate skills are now in `~/.claude/skills/` (the `DEPLOYED_GLOBAL` list); which were skipped + why
+- After the Claude Code restart in §9, slash commands `/teamvault-publish`, `/teamvault-status`, `/teamvault-review`, `/teamvault-doctor` will work from ANY directory — not just from inside `$SPACE_DIR`
+- Re-running this setup skill (or v0.1.5+'s planned `/teamvault-deploy-skills`) refreshes these copies after an upstream sync into the space fork
+
+**Why user-global, not per-project?** These skills talk to the sidecar over `localhost` regardless of which project the dev is currently in. The MCP tools (`vault_search`, `vault_publish`, etc.) already work everywhere because MCP was registered with `--scope user` in §6 — this step matches that scope for the slash commands.
+
+**Why not `teamvault-setup` itself?** Re-installs always start from the master template at `/tmp/teamvault-master`. Setup stays in the space dir; no need to clone it to user-global.
+
+**Why not `pr-*`?** Those are project-workflow skills, deployed per-project via §7.5 (and committed to project repos so teammates without TeamVault still get them via git). Different lifecycle entirely.
+
 ### 8. Smoke test (BEFORE the user restarts Claude Code)
 
 The sidecar can take 8-15s to come up on first launch (cold imports + torch lazy
