@@ -94,7 +94,7 @@ print(','.join(d.get('enabled_packs') or []))
 
 **Ask the user:**
 
-> "This space currently enables packs: `$PACKS_NOW` (master template defaults to `hipaa-reference + clickup-linkage`). Keep as-is, modify, or set to none? Available in the master template: `hipaa-reference`, `clickup-linkage`, `jira-linkage`. (keep / new comma-separated list / none)"
+> "This space currently enables packs: `$PACKS_NOW` (master template defaults to `hipaa-reference + clickup`). Keep as-is, modify, or set to none? Available in the master template: `hipaa-reference`, `clickup`, `jira-linkage`. (keep / new comma-separated list / none)"
 
 If the user says "keep" (or confirms by saying anything affirmative), do nothing further. Otherwise persist their choice:
 
@@ -406,6 +406,81 @@ Confirm to the user:
 **Why not `teamvault-setup` itself?** Re-installs always start from the master template at `/tmp/teamvault-master`. Setup stays in the space dir; no need to clone it to user-global.
 
 **Why not `pr-*`?** Those are project-workflow skills, deployed per-project via §7.5 (and committed to project repos so teammates without TeamVault still get them via git). Different lifecycle entirely.
+
+### 7.7. Deploy pack-shipped skills (v0.2+ pack contract)
+
+Each enabled pack MAY declare workflow skills under `contributions.skills` in its `PACK.yaml`. These ship inside the pack as `<pack-root>/skills/<skill-name>/SKILL.md` directories. They need to be copied into `~/.claude/skills/` so the slash commands become available from any project the dev is in.
+
+This step makes a pack a self-contained domain capability bundle: enable `clickup` and you get `clickup-linkage-reviewer` (via /teamvault-review) AND `/start-clickup` (via slash command) AND any other ClickUp skills the pack ships — all from one `enabled_packs: [clickup]` declaration.
+
+Discover what each enabled pack ships:
+
+```bash
+PACK_SKILLS_DEPLOYED=()
+PACK_SKILLS_SKIPPED=()
+
+for PACK_DIR in "$SPACE_DIR/packs/"*/; do
+    PACK_NAME=$(basename "$PACK_DIR")
+    PACK_YAML="$PACK_DIR/PACK.yaml"
+    [ ! -f "$PACK_YAML" ] && continue
+
+    # Only deploy skills from ENABLED packs (per space.yaml::enabled_packs)
+    IS_ENABLED=$(python3 -c "
+import yaml
+space = yaml.safe_load(open('$SPACE_DIR/space.yaml')) or {}
+enabled = space.get('enabled_packs') or []
+print('yes' if '$PACK_NAME' in enabled else 'no')
+")
+    [ "$IS_ENABLED" != "yes" ] && continue
+
+    # Read declared skills from PACK.yaml::contributions.skills
+    SKILL_PATHS=$(python3 -c "
+import yaml
+doc = yaml.safe_load(open('$PACK_YAML')) or {}
+for sk in (doc.get('contributions', {}) or {}).get('skills', []) or []:
+    print(sk['path'])
+")
+
+    while IFS= read -r SK_REL; do
+        [ -z "$SK_REL" ] && continue
+        SRC="$PACK_DIR$SK_REL"
+        SK_NAME=$(basename "$SK_REL")
+        DST="$HOME/.claude/skills/$SK_NAME"
+
+        if [ ! -d "$SRC" ]; then
+            PACK_SKILLS_SKIPPED+=("$PACK_NAME/$SK_NAME (declared but dir missing)")
+            continue
+        fi
+        if [ ! -f "$SRC/SKILL.md" ]; then
+            PACK_SKILLS_SKIPPED+=("$PACK_NAME/$SK_NAME (no SKILL.md)")
+            continue
+        fi
+
+        if [ -d "$DST" ]; then
+            # Conflict — ASK the user (overwrite / skip). Default: skip,
+            # to preserve user-side customizations.
+            echo "  $DST already exists. Overwrite with the version from pack '$PACK_NAME'? [y/N]"
+            # If user answers y: rm -rf "$DST"; cp -r "$SRC" "$DST"; PACK_SKILLS_DEPLOYED+=("$PACK_NAME/$SK_NAME (overwrote)")
+            # If user answers anything else: PACK_SKILLS_SKIPPED+=("$PACK_NAME/$SK_NAME (preserved existing)"); continue
+            continue
+        fi
+
+        cp -r "$SRC" "$DST"
+        PACK_SKILLS_DEPLOYED+=("$PACK_NAME/$SK_NAME")
+    done <<< "$SKILL_PATHS"
+done
+```
+
+**Conflict policy:** when `~/.claude/skills/<name>/` already exists, ASK the user (via `AskUserQuestion`) whether to overwrite or skip. Default: skip (preserves customizations). Do NOT silently overwrite — agent skills often contain per-user tweaks the dev wants to keep.
+
+Confirm to the user:
+- Which pack skills were deployed (the `DEPLOYED` list) — e.g. `clickup/start-clickup`
+- Which were skipped + why (`existing preserved`, `declared but missing`, `no SKILL.md`)
+- After the Claude Code restart in §9, the new slash commands will be available from any directory: e.g. `/start-clickup`
+
+**Re-deploy after upstream pack update:** when a pack's skills are revised upstream and your space pulls them via `git_sync`, re-run this setup skill to refresh. v0.1.5+'s planned `/teamvault-pack-upgrade` will do this incrementally instead of running the full setup.
+
+**Why user-global, not per-project?** Pack-shipped skills are tied to the enabled packs of the bound space — they're capabilities the space provides, not the project. If a dev later binds a project to a DIFFERENT space with different enabled packs, they'll re-run this setup to refresh the user-global skill set. (v0.1.5+ may add per-project scoping for packs that declare it.)
 
 ### 8. Smoke test (BEFORE the user restarts Claude Code)
 

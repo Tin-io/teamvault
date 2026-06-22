@@ -102,6 +102,7 @@ Tools exposed to any MCP host (each is an HTTP wrapper around the sidecar):
 name: <kebab-case>
 version: <semver>
 description: <one-line>
+knowledge_topics: [<kebab-case>]   # optional; v0.1+ — domains the team has accumulated KB on
 contributions:
   agents:
     - path: <relative path to .md file>
@@ -111,7 +112,11 @@ contributions:
   reviewers:
     - agent: <basename of agents[*].path without .md>
       mode: advisory | blocking
+  skills:                           # v0.2+ — pack-shipped Claude Code skills
+    - path: <relative path to skill DIRECTORY containing SKILL.md>
 ```
+
+**`skills:` field (v0.2+).** Each entry points to a skill directory (e.g., `skills/start-clickup/`) containing a `SKILL.md`. Pack-shipped skills are NOT executed by the sidecar runtime — they're manifested for `/teamvault-setup`'s §7.7 step to copy into `~/.claude/skills/` at install/upgrade time. This lets a pack be a self-contained domain capability bundle: enable one pack → get its scrubbers + reviewers + workflow skills together. The pack runtime drops skill entries with missing dirs / missing SKILL.md with a warning (pack still loads — skills are a manifest, not runtime-load-blocking).
 
 v0.1+ extensions to the contract (per [ROADMAP.md::P2.4](ROADMAP.md)): `ordering`, `mode: veto`, `on_error: fail | skip | warn`, `depends_on`, `mutually_exclusive_with`, `timeout_s`, per-reviewer `token_budget`.
 

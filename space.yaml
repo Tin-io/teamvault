@@ -22,5 +22,5 @@ kingdoms:
 compliance: false           # true → auto-deploy disabled; pack updates require /teamvault-apply-pack-update
 enabled_packs:
   - hipaa-reference         # example; remove if your team doesn't handle PHI
-  - clickup-linkage         # example; remove if your team doesn't use ClickUp
+  - clickup                 # example; remove if your team doesn't use ClickUp
 auto_deploy: true           # automatically apply pack updates within ~60s of git pull
