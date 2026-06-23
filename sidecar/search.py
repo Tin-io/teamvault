@@ -87,11 +87,36 @@ def _rrf_fuse(bm25_hits: list[dict], vec_hits: list[dict], k: int = RRF_K):
 
 
 def hybrid_search(query: str, top_k: int, space: str) -> list[dict[str, Any]]:
+    """Hybrid BM25 + vector search with RRF fusion.
+
+    P0.7: under strict compliance posture, scrub `chunk`, `path`, and string
+    values in `metadata` through a UNION-scrubber snapshot built ONCE per
+    query. Path is included because slug-derived paths embed identifying
+    info (e.g., `kb/entries/<kingdom>/<palace>/.../<slug>.md` — a slug
+    derived from PHI content leaks PHI via the path even when the content
+    is redacted).
+
+    Defense-in-depth: chunks SHOULD have been scrubbed at publish time
+    (via publish.py's pack-runtime call). Anything that escaped that scrub
+    (manual git commit bypassing /teamvault-publish, stale pre-pack
+    content) gets caught here.
+
+    Fail-closed: if the scrubber pipeline cannot complete (broken pack,
+    oversize input, etc.), the affected field returns the sentinel
+    `[SCRUB_UNAVAILABLE]` rather than unscrubbed text.
+    """
     import yaml
+
+    from sidecar import compliance as compliance_mod
 
     bm25 = _fts_search(space, query, top_k * 2)
     vec = _vector_search(space, query, top_k * 2)
     fused = _rrf_fuse(bm25, vec)
+
+    # Snapshot the scrubber once per query. Under permissive posture this
+    # is the identity closure; under strict it carries a PackRuntime
+    # snapshot so per-chunk + per-metadata-string calls don't re-instantiate.
+    scrubber = compliance_mod.make_scrubber()
 
     results: list[dict[str, Any]] = []
     for content_hash, score, rep in fused[:top_k]:
@@ -101,10 +126,15 @@ def hybrid_search(query: str, top_k: int, space: str) -> list[dict[str, Any]]:
                 meta = yaml.safe_load(rep["frontmatter_yaml"]) or {}
             except yaml.YAMLError:
                 pass
+
+        chunk = scrubber(rep.get("text", ""))
+        path = scrubber(rep.get("entry_path", ""))
+        meta = compliance_mod.scrub_metadata(meta, scrubber)
+
         results.append(
             {
-                "path": rep.get("entry_path", ""),
-                "chunk": rep.get("text", ""),
+                "path": path,
+                "chunk": chunk,
                 "score": float(score),
                 "metadata": meta,
             }

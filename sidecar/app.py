@@ -212,13 +212,21 @@ def healthz() -> dict[str, Any]:
 
     `recent_errors` is the in-memory tail of the last 5 WARNING+ log records
     per space (plus a `__sidecar__` bucket for pre-space-aware errors).
+
+    `compliance` (P0.7): machine-wide egress posture. When ANY registered
+    space has `compliance: true`, posture flips to `strict` and the listed
+    invariants apply machine-wide (cross-space scrubbers, strictest-regime
+    search scrubbing). See `sidecar/compliance.py` for the contract.
     """
+    from sidecar import compliance
+
     return {
         "status": "ok",
         "version": config.VERSION,
         "config": config.summary(),
         "spaces": [s.model_dump() for s in _spaces.values()],
         "recent_errors": logging_setup.all_recent_errors(),
+        "compliance": compliance.egress_invariants(),
     }
 
 
