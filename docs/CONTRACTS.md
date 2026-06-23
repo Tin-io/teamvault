@@ -120,6 +120,36 @@ contributions:
 
 v0.1+ extensions to the contract (per [ROADMAP.md::P2.4](ROADMAP.md)): `ordering`, `mode: veto`, `on_error: fail | skip | warn`, `depends_on`, `mutually_exclusive_with`, `timeout_s`, per-reviewer `token_budget`.
 
+### Failure modes (P0.6)
+
+The pack runtime can fail in several ways. v0.0 enumerates and tests these modes with **required block behavior for `compliance: true` spaces**. The runtime never silently fails open under `compliance: true`.
+
+| Failure                  | When                                                                  | `compliance: true` | `compliance: false` |
+|--------------------------|-----------------------------------------------------------------------|--------------------|---------------------|
+| `missing_file`           | PACK.yaml references a scrubber YAML that doesn't exist, OR exists but isn't a regular file (e.g., a directory) | BLOCK | ADVISORY |
+| `malformed_yaml`         | YAMLError or OSError loading PACK.yaml or a scrubber YAML             | BLOCK              | ADVISORY            |
+| `degenerate_pack`        | PACK.yaml parses but has no `name:` field (empty / clobbered / blank) | BLOCK              | ADVISORY            |
+| `unresolved_pack`        | `enabled_packs` entry matches no pack directory or PACK.yaml `name:`  | BLOCK              | ADVISORY            |
+| `regex_compile`          | a pattern's regex doesn't compile (e.g., `[unclosed`)                 | BLOCK              | ADVISORY            |
+| `oversize_input`         | input exceeds 10 MB UTF-8 (proxy for timeout / OOM)                   | BLOCK              | ADVISORY            |
+| timeout / OOM (direct)   | Python `re` has no timeout; can't detect at runtime                   | deferred to v0.1 (proxied by oversize cap) | same |
+
+Failures synthesize a verdict with `agent: "scrubber-health"`. On `compliance: true` spaces the synthetic verdict is `mode: blocking` and `overall = "block"`; on `compliance: false` spaces it's `mode: advisory` and `overall` stays `pass` (unless a real scrubber match also fires).
+
+**Identifiers used in synthetic verdicts** (hyphenated to avoid markdown-bold rendering in PR comment tables): `scrubber-health` (agent), `space-yaml` (synthetic pack for space.yaml-level errors), `runtime` (synthetic pack for runtime errors like `oversize_input`).
+
+**Malformed `space.yaml`:** PackRuntime presumes `compliance: true` (safe-mode) when space.yaml itself fails to parse — assuming `compliance: false` would silently downgrade enforcement on what may be a corrupted compliance space. The resulting `space-yaml` LoadError additionally carries `force_blocking=True`, so the verdict blocks regardless of how downstream code interprets the (unreadable) compliance flag.
+
+**Enable-by-name and enable-by-directory both work.** `enabled_packs` entries are resolved against either the pack directory name OR the PACK.yaml `name:` field. An entry that matches neither produces an `unresolved_pack` LoadError — closing the silent-fail-open path where a typo in `enabled_packs` (or a forked pack with a renamed directory) would have disabled the scrubber.
+
+**`fan_out_review` vs. `fan_out_scrub`:**
+- `fan_out_review` (commit + PR gate) synthesizes the verdict directly.
+- `fan_out_scrub` (used by `/publish` at write time) records `ScrubError`s on `runtime.scrub_errors` rather than synthesizing a verdict. `publish.py` inspects both `runtime.load_errors` and `runtime.scrub_errors` after the scrub call and **refuses publish under `compliance: true`** when either is non-empty. This closes the publish-path PHI leak that the previous "v0.0 silent skip on regex error" behavior allowed.
+
+**Linkage checks** (clickup, jira-linkage) run regardless of oversize input — they're bounded regex against the diff and SOC 2 audit evidence depends on the linkage advisory row appearing in the verdict even when scrubber matching is aborted on oversize.
+
+Tests: `.build/test_pack_runtime_failure_modes.py` covers the matrix.
+
 ### Pack discovery & loading
 
 - Discovery glob: `${SPACE_ROOT}/packs/*/PACK.yaml`

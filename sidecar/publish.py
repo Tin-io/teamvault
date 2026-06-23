@@ -70,7 +70,44 @@ def publish_entry(space: str, slug: str, content: str, frontmatter: dict) -> dic
         from sidecar import pack_runtime
 
         runtime = pack_runtime.PackRuntime(root)
-        _, matched = _scrub_text_blob(scrub_target, runtime)
+
+        # P0.6/fix #4: pack-load failures under compliance MUST refuse publish.
+        # Without this check, a pack with (e.g.) a missing scrubber file or
+        # malformed PACK.yaml would silently leave content unscrubbed.
+        if compliance and runtime.load_errors:
+            err_summary = "; ".join(
+                f"{e.pack}/{e.type}: {e.detail}" for e in runtime.load_errors
+            )
+            return {
+                "path": "",
+                "committed": False,
+                "pushed": False,
+                "error": (
+                    "compliance space: pack runtime had load failures; "
+                    f"refusing to publish (fail-closed). errors: {err_summary}"
+                ),
+            }
+
+        scrubbed, matched = _scrub_text_blob(scrub_target, runtime)
+
+        # P0.6/fix #4: scrub-time failures (regex compile, oversize input) under
+        # compliance MUST refuse publish. fan_out_scrub returns the original
+        # text on these failures; without this check, content would publish
+        # unscrubbed.
+        if compliance and runtime.scrub_errors:
+            err_summary = "; ".join(
+                f"{e.pack}/{e.type}: {e.detail}" for e in runtime.scrub_errors
+            )
+            return {
+                "path": "",
+                "committed": False,
+                "pushed": False,
+                "error": (
+                    "compliance space: pack runtime had scrub failures; "
+                    f"refusing to publish (fail-closed). errors: {err_summary}"
+                ),
+            }
+
         if matched:
             return {
                 "path": "",
