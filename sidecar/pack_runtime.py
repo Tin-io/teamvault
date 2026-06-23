@@ -22,15 +22,23 @@ Failure-mode contract (P0.6)
 The pack runtime can fail in several ways; v0.0 enumerates and tests them
 with required block behavior for `compliance: true` spaces:
 
-| Failure              | When                                              |
-|----------------------|---------------------------------------------------|
-| missing_file         | PACK.yaml references a scrubber YAML that doesn't exist |
-| malformed_yaml       | YAMLError loading the PACK.yaml or a scrubber YAML |
-| regex_compile        | a pattern's regex doesn't compile (`[unclosed`)   |
-| oversize_input       | diff exceeds `_MAX_DIFF_BYTES` (proxy for timeout / OOM) |
+| Failure              | When                                                       |
+|----------------------|------------------------------------------------------------|
+| missing_file         | PACK.yaml references a scrubber YAML that doesn't exist    |
+|                      | (or it exists but isn't a regular file — directory, etc.)  |
+| malformed_yaml       | YAMLError loading the PACK.yaml or a scrubber YAML; or any |
+|                      | OSError reading a scrubber file                            |
+| degenerate_pack      | PACK.yaml parsed but has no `name` field (empty/blank/     |
+|                      | clobbered by a botched merge)                              |
+| unresolved_pack      | space.yaml::enabled_packs entry does not match any pack    |
+|                      | directory OR PACK.yaml `name:` field                       |
+| regex_compile        | a pattern's regex doesn't compile (`[unclosed`)            |
+| oversize_input       | input exceeds `_MAX_INPUT_BYTES` (proxy for timeout / OOM) |
+| space_yaml malformed | space.yaml itself fails YAML parsing — load error is FORCE-|
+|                      | BLOCKING regardless of the (unreadable) compliance flag    |
 
 For `compliance: true` spaces, any of the above synthesizes a BLOCKING
-reviewer verdict (`agent="__scrubber_health__"`) and `overall = "block"`.
+reviewer verdict (`agent="scrubber-health"`) and `overall = "block"`.
 For `compliance: false` spaces, the same failures synthesize ADVISORY
 verdicts; `overall` stays `pass` unless a real scrubber match also fires.
 
@@ -40,11 +48,14 @@ Python's `re` module has no timeout; the oversize-input cap is the v0.0
 proxy. A real timeout (e.g., the `regex` package, or `signal.alarm` under
 Unix) is deferred to v0.1.
 
-A malformed `space.yaml` falls back to `compliance: false` — assuming
-`compliance: true` from a broken config would block all commits with no
-clear remediation path.
+Special case — broken space.yaml. When space.yaml ITSELF fails to parse,
+`_read_compliance` cannot determine the flag. Rather than silently fail-
+open by defaulting to `compliance: false`, it presumes `compliance: true`
+(safe-mode) AND the resulting `space-yaml` LoadError carries
+`force_blocking=True` so the verdict blocks even if a downstream caller
+re-overrides compliance.
 
-See docs/CONTRACTS.md "Pack runtime failure modes" for the full table.
+See docs/CONTRACTS.md "Pack runtime failure modes" for the contract.
 """
 from __future__ import annotations
 
@@ -54,11 +65,13 @@ from pathlib import Path
 from typing import Literal
 
 
-# Refuse to scrub diffs larger than this. Python's `re` module has no timeout
-# and no memory cap; catastrophic backtracking on pathological input could
-# hang or OOM the sidecar. The cap is a fail-closed proxy until v0.1 lands a
-# real timeout (e.g., the `regex` package, or signal.alarm under Unix).
-_MAX_DIFF_BYTES = 10_000_000  # 10 MB
+# Refuse to process inputs larger than this. Python's `re` module has no
+# timeout and no memory cap; catastrophic backtracking on pathological input
+# could hang or OOM the sidecar. The cap is a fail-closed proxy until v0.1
+# lands a real timeout (e.g., the `regex` package, or signal.alarm under Unix).
+# Measured in BYTES (UTF-8 encoded), not character count — multi-byte content
+# can blow past the threshold long before character count would.
+_MAX_INPUT_BYTES = 10_000_000  # 10 MB
 
 
 # ---------- Models ----------
@@ -80,17 +93,25 @@ class Reviewer:
 class LoadError:
     """Recorded at pack-load time. Synthesized into a verdict by
     PackRuntime.fan_out_review so downstream consumers (precommit hook,
-    PR-review workflow) see the same shape they already handle."""
+    PR-review workflow) see the same shape they already handle.
+
+    `force_blocking=True` overrides the compliance-flag-derived mode for
+    the verdict. Used for the broken-space.yaml case where the compliance
+    flag itself can't be trusted.
+    """
 
     pack: str
-    type: str  # missing_file | malformed_yaml
+    type: str  # missing_file | malformed_yaml | degenerate_pack | unresolved_pack
     detail: str
+    force_blocking: bool = False
 
 
 @dataclass
 class ScrubError:
-    """Recorded at runtime during fan_out_review (regex compile failure,
-    oversize input). Synthesized into the verdict like LoadError."""
+    """Recorded at runtime during fan_out_review / fan_out_scrub
+    (regex compile failure, oversize input). Synthesized into the verdict
+    like LoadError.
+    """
 
     pack: str
     type: str  # regex_compile | oversize_input
@@ -129,8 +150,12 @@ class ReviewVerdictDC:
     individual: list[ReviewerVerdictDC]
 
 
-# Synthetic agent name used for load- and runtime-failure verdicts.
-_SCRUBBER_HEALTH_AGENT = "__scrubber_health__"
+# Synthetic agent + pack identifiers used for load- and runtime-failure verdicts.
+# Hyphenated (not underscored) so they don't render as bold in markdown tables
+# (the GHA PR-comment workflow uses pipe-table cells).
+_SCRUBBER_HEALTH_AGENT = "scrubber-health"
+_SPACE_YAML_PACK = "space-yaml"
+_RUNTIME_PACK = "runtime"
 
 
 # ---------- Loader ----------
@@ -139,9 +164,9 @@ _SCRUBBER_HEALTH_AGENT = "__scrubber_health__"
 def _load_pack(pack_root: Path) -> tuple[Pack | None, list[LoadError]]:
     """Load a single pack. Returns (Pack | None, errors).
 
-    P0.6: load errors (missing scrubber file, malformed YAML) are recorded
-    instead of silently swallowed. Returned errors get synthesized into the
-    verdict by PackRuntime.fan_out_review.
+    P0.6: load errors (missing file / malformed YAML / non-file scrubber /
+    degenerate PACK.yaml) are recorded instead of silently swallowed. Returned
+    errors get synthesized into the verdict by PackRuntime.fan_out_review.
     """
     import yaml
 
@@ -156,9 +181,24 @@ def _load_pack(pack_root: Path) -> tuple[Pack | None, list[LoadError]]:
     except yaml.YAMLError as e:
         errors.append(LoadError(pack=pack_root.name, type="malformed_yaml", detail=f"PACK.yaml: {e}"))
         return None, errors
+    except OSError as e:
+        errors.append(LoadError(pack=pack_root.name, type="malformed_yaml", detail=f"PACK.yaml: read failed: {e}"))
+        return None, errors
 
-    contribs = doc.get("contributions", {}) or {}
-    pack_name = doc.get("name", pack_root.name)
+    # Degenerate PACK.yaml — empty / whitespace-only / lacks the canonical
+    # name field. An adversary or merge conflict that blanks the file would
+    # otherwise produce a Pack with zero scrubbers + zero reviewers and pass
+    # silently.
+    if not isinstance(doc, dict) or not doc.get("name"):
+        errors.append(LoadError(
+            pack=pack_root.name,
+            type="degenerate_pack",
+            detail="PACK.yaml lacks a name field (likely empty, clobbered, or malformed)",
+        ))
+        return None, errors
+
+    contribs = doc.get("contributions") or {}
+    pack_name = doc["name"]
 
     agents = [pack_root / a["path"] for a in (contribs.get("agents") or [])]
 
@@ -166,11 +206,28 @@ def _load_pack(pack_root: Path) -> tuple[Pack | None, list[LoadError]]:
     for sc in contribs.get("scrubbers") or []:
         sc_type = sc.get("type", "regex")
         sc_file = pack_root / sc["file"]
-        if not sc_file.exists():
-            errors.append(LoadError(pack=pack_name, type="missing_file", detail=str(sc["file"])))
+        # is_file() — narrower than exists(): returns False for directories,
+        # symlinks-to-directories, missing files. Closes the IsADirectoryError
+        # crash path (was: exists() True + read_text() raised uncaught).
+        if not sc_file.is_file():
+            detail = (
+                f"{sc['file']}: not a regular file"
+                if sc_file.exists()
+                else str(sc["file"])
+            )
+            errors.append(LoadError(pack=pack_name, type="missing_file", detail=detail))
             continue
         try:
-            sc_doc = yaml.safe_load(sc_file.read_text()) or {}
+            sc_text = sc_file.read_text()
+        except OSError as e:
+            errors.append(LoadError(
+                pack=pack_name,
+                type="malformed_yaml",
+                detail=f"{sc['file']}: read failed: {e}",
+            ))
+            continue
+        try:
+            sc_doc = yaml.safe_load(sc_text) or {}
         except yaml.YAMLError as e:
             errors.append(LoadError(pack=pack_name, type="malformed_yaml", detail=f"{sc['file']}: {e}"))
             continue
@@ -222,27 +279,32 @@ class PackRuntime:
 
     def __init__(self, space_path: Path):
         self.space_path = space_path
-        self.compliance = self._read_compliance()
+        self.compliance, self._compliance_unreadable = self._read_compliance()
         self.packs, self.load_errors = self._load_enabled()
+        # scrub_errors is mutated by fan_out_scrub on each call. Callers (e.g.,
+        # publish.py) inspect both `load_errors` and `scrub_errors` to enforce
+        # fail-closed semantics under compliance.
+        self.scrub_errors: list[ScrubError] = []
 
-    def _read_compliance(self) -> bool:
-        """Read space.yaml::compliance. Defaults to False on missing-file or parse error.
+    def _read_compliance(self) -> tuple[bool, bool]:
+        """Return (compliance, unreadable).
 
-        Rationale: assuming compliance: true from a broken config would block
-        all commits with no clear remediation path. Better to fail OPEN on
-        the compliance flag itself and surface the broken config via the
-        load-error path (which IS reported in the verdict).
+        Missing space.yaml → (False, False) — no compliance gate.
+        Malformed space.yaml → (True, True) — presume strict (safe-mode);
+            the broken-space.yaml LoadError carries force_blocking=True so
+            the verdict blocks no matter what.
+        Well-formed space.yaml → (doc.get('compliance', False), False).
         """
         import yaml
 
         space_yaml = self.space_path / "space.yaml"
         if not space_yaml.exists():
-            return False
+            return False, False
         try:
             doc = yaml.safe_load(space_yaml.read_text()) or {}
         except yaml.YAMLError:
-            return False
-        return bool(doc.get("compliance", False))
+            return True, True
+        return bool(doc.get("compliance", False)), False
 
     def _load_enabled(self) -> tuple[list[Pack], list[LoadError]]:
         import yaml
@@ -253,30 +315,66 @@ class PackRuntime:
         try:
             space_doc = yaml.safe_load(space_yaml.read_text()) or {}
         except yaml.YAMLError as e:
-            return [], [LoadError(pack="__space_yaml__", type="malformed_yaml", detail=str(e))]
+            return [], [LoadError(
+                pack=_SPACE_YAML_PACK,
+                type="malformed_yaml",
+                detail=str(e),
+                force_blocking=True,
+            )]
         enabled = set(space_doc.get("enabled_packs") or [])
 
+        # Walk packs/ once. For each candidate dir, record (dir_name, pack | None,
+        # errors). Then resolve enabled_packs entries against EITHER the dir name
+        # or the PACK.yaml `name:` field, so a fork that ships a renamed dir still
+        # resolves to its declared name, and the convention "dir name = pack name"
+        # stays a convention rather than an enforced rule.
+        pack_entries: list[tuple[str, Pack | None, list[LoadError]]] = []
+        name_to_dir: dict[str, str] = {}
         packs_dir = self.space_path / "packs"
-        if not packs_dir.exists():
-            return [], []
+        if packs_dir.exists():
+            for d in sorted(packs_dir.iterdir()):
+                if not d.is_dir():
+                    continue
+                p, errs = _load_pack(d)
+                pack_entries.append((d.name, p, errs))
+                if p:
+                    name_to_dir[p.name] = d.name
+
+        dir_to_entry = {e[0]: e for e in pack_entries}
 
         out_packs: list[Pack] = []
         out_errors: list[LoadError] = []
-        for d in sorted(packs_dir.iterdir()):
-            if not d.is_dir():
+        enabled_dirs: set[str] = set()
+        for enabled_name in enabled:
+            if enabled_name in dir_to_entry:
+                enabled_dirs.add(enabled_name)
+            elif enabled_name in name_to_dir:
+                enabled_dirs.add(name_to_dir[enabled_name])
+            else:
+                out_errors.append(LoadError(
+                    pack=enabled_name,
+                    type="unresolved_pack",
+                    detail=(
+                        f"enabled_packs entry {enabled_name!r} matches no pack "
+                        "directory or PACK.yaml name"
+                    ),
+                ))
+
+        for dir_name, pack, errs in pack_entries:
+            if dir_name not in enabled_dirs:
                 continue
-            # Directory name is the pack identifier for enable/disable. Convention:
-            # directory name matches PACK.yaml::name. Disabled packs aren't loaded.
-            if d.name not in enabled:
-                continue
-            p, errs = _load_pack(d)
+            if pack:
+                out_packs.append(pack)
             out_errors.extend(errs)
-            if p:
-                out_packs.append(p)
+
         return out_packs, out_errors
 
     def _failure_mode(self) -> Literal["blocking", "advisory"]:
-        """Synthetic verdict severity for load + runtime failures."""
+        """Default synthetic-verdict mode based on the space's compliance flag.
+
+        Individual LoadErrors can override via `force_blocking=True` —
+        used for broken-space.yaml where the flag itself is unreadable.
+        """
         return "blocking" if self.compliance else "advisory"
 
     # ---------- Scrub ----------
@@ -284,13 +382,28 @@ class PackRuntime:
     def fan_out_scrub(self, text: str) -> str:
         """Run all enabled scrubbers. Returns text with matches replaced by [REDACTED].
 
-        v0.0: silent-skip on regex compile error — used by /publish at write
-        time and tolerant of a single broken pattern by design. The strict
-        fail-closed semantics live on fan_out_review (commit / PR-time gate).
-        Hardening fan_out_scrub is tracked as a follow-up to P0.6 once
-        publish.py grows a way to surface the runtime errors back to the
-        caller.
+        P0.6: records regex compile errors and oversize-input failures as
+        `ScrubError`s on `self.scrub_errors`. CALLER is expected to inspect
+        `scrub_errors` after the call and enforce fail-closed semantics under
+        compliance (see publish.py).
+
+        On oversize input, scrubbers are skipped entirely and the input is
+        returned unchanged — the caller MUST check scrub_errors to decide
+        whether to use the (unscrubbed) result.
         """
+        self.scrub_errors = []
+        text_bytes = len(text.encode("utf-8"))
+        if text_bytes > _MAX_INPUT_BYTES:
+            self.scrub_errors.append(ScrubError(
+                pack=_RUNTIME_PACK,
+                type="oversize_input",
+                detail=(
+                    f"input size {text_bytes} bytes exceeds "
+                    f"{_MAX_INPUT_BYTES} byte cap; scrub aborted"
+                ),
+            ))
+            return text
+
         result = text
         for pack in self.packs:
             for sc in pack.scrubbers:
@@ -302,7 +415,13 @@ class PackRuntime:
                         continue
                     try:
                         result = re.sub(pattern_str, "[REDACTED]", result)
-                    except re.error:
+                    except re.error as exc:
+                        self.scrub_errors.append(ScrubError(
+                            pack=pack.name,
+                            type="regex_compile",
+                            detail=str(exc),
+                            pattern_name=pat.get("name"),
+                        ))
                         continue
         return result
 
@@ -316,25 +435,27 @@ class PackRuntime:
           - Pack 'clickup' (advisory): check diff for ClickUp URL.
           - Pack 'jira-linkage' (advisory): check diff for Jira ticket reference.
 
-        P0.6: scrubber failures synthesize `__scrubber_health__` verdicts.
+        P0.6: scrubber failures synthesize `scrubber-health` verdicts.
         For compliance: true → blocking (overall: block). For compliance:
         false → advisory (overall stays: pass unless a real match fires).
+
+        Linkage checks (clickup, jira-linkage) run regardless of oversize
+        input — they're cheap bounded regex against the diff, and SOC 2
+        audit evidence depends on them appearing in the verdict even when
+        scrubber matching is aborted.
         """
-        # Oversize input check — proxy for timeout/OOM since Python re has no
-        # timeout. Recorded once, applied as a top-level scrub error.
         runtime_errors: list[ScrubError] = []
-        oversize = len(diff) > _MAX_DIFF_BYTES
+        diff_bytes = len(diff.encode("utf-8"))
+        oversize = diff_bytes > _MAX_INPUT_BYTES
         if oversize:
-            runtime_errors.append(
-                ScrubError(
-                    pack="__runtime__",
-                    type="oversize_input",
-                    detail=(
-                        f"diff size {len(diff)} bytes exceeds {_MAX_DIFF_BYTES} byte cap; "
-                        "cannot scrub safely"
-                    ),
-                )
-            )
+            runtime_errors.append(ScrubError(
+                pack=_RUNTIME_PACK,
+                type="oversize_input",
+                detail=(
+                    f"diff size {diff_bytes} bytes exceeds "
+                    f"{_MAX_INPUT_BYTES} byte cap; pattern matching aborted"
+                ),
+            ))
 
         added: list[str] = []
         if not oversize:
@@ -348,35 +469,29 @@ class PackRuntime:
 
         for pack in self.packs:
             for rev in pack.reviewers:
-                if oversize:
-                    # Don't trust any reviewer's verdict on oversize input —
-                    # the synthetic failure below covers it.
-                    continue
-
                 msg = "no patterns matched"
                 pof = "pass"
 
                 matches: list[str] = []
-                for sc in pack.scrubbers:
-                    if sc.type != "regex":
-                        continue
-                    for pat in sc.patterns:
-                        pattern_str = pat.get("pattern", "")
-                        if not pattern_str:
+                if not oversize:
+                    for sc in pack.scrubbers:
+                        if sc.type != "regex":
                             continue
-                        try:
-                            if re.search(pattern_str, added_text):
-                                matches.append(pat.get("name") or pattern_str[:40])
-                        except re.error as exc:
-                            runtime_errors.append(
-                                ScrubError(
+                        for pat in sc.patterns:
+                            pattern_str = pat.get("pattern", "")
+                            if not pattern_str:
+                                continue
+                            try:
+                                if re.search(pattern_str, added_text):
+                                    matches.append(pat.get("name") or pattern_str[:40])
+                            except re.error as exc:
+                                runtime_errors.append(ScrubError(
                                     pack=pack.name,
                                     type="regex_compile",
                                     detail=str(exc),
                                     pattern_name=pat.get("name"),
-                                )
-                            )
-                            continue
+                                ))
+                                continue
 
                 if matches:
                     msg = f"matched: {', '.join(matches)}"
@@ -411,43 +526,44 @@ class PackRuntime:
                         pof = "fail"
                         if rev.mode == "blocking":
                             overall = "block"
+                elif oversize:
+                    # Scrubber-only reviewer on oversize input: skip the per-
+                    # reviewer row entirely (we didn't actually scan; emitting
+                    # "no patterns matched" would be misleading). The synthetic
+                    # runtime verdict below carries the block signal.
+                    continue
 
-                individual.append(
-                    ReviewerVerdictDC(
-                        pack=pack.name,
-                        agent=rev.agent,
-                        mode=rev.mode,
-                        pass_or_fail=pof,
-                        message=msg,
-                    )
-                )
+                individual.append(ReviewerVerdictDC(
+                    pack=pack.name,
+                    agent=rev.agent,
+                    mode=rev.mode,
+                    pass_or_fail=pof,
+                    message=msg,
+                ))
 
         # Synthesize verdicts for load + runtime failures.
-        mode = self._failure_mode()
+        default_mode = self._failure_mode()
         for err in self.load_errors:
-            individual.append(
-                ReviewerVerdictDC(
-                    pack=err.pack,
-                    agent=_SCRUBBER_HEALTH_AGENT,
-                    mode=mode,
-                    pass_or_fail="fail",
-                    message=f"load failure: {err.type}: {err.detail}",
-                )
-            )
-            if mode == "blocking":
+            verdict_mode: str = "blocking" if err.force_blocking else default_mode
+            individual.append(ReviewerVerdictDC(
+                pack=err.pack,
+                agent=_SCRUBBER_HEALTH_AGENT,
+                mode=verdict_mode,
+                pass_or_fail="fail",
+                message=f"load failure: {err.type}: {err.detail}",
+            ))
+            if verdict_mode == "blocking":
                 overall = "block"
         for err in runtime_errors:
             pat_info = f" (pattern: {err.pattern_name})" if err.pattern_name else ""
-            individual.append(
-                ReviewerVerdictDC(
-                    pack=err.pack,
-                    agent=_SCRUBBER_HEALTH_AGENT,
-                    mode=mode,
-                    pass_or_fail="fail",
-                    message=f"runtime failure: {err.type}: {err.detail}{pat_info}",
-                )
-            )
-            if mode == "blocking":
+            individual.append(ReviewerVerdictDC(
+                pack=err.pack,
+                agent=_SCRUBBER_HEALTH_AGENT,
+                mode=default_mode,
+                pass_or_fail="fail",
+                message=f"runtime failure: {err.type}: {err.detail}{pat_info}",
+            ))
+            if default_mode == "blocking":
                 overall = "block"
 
         return ReviewVerdictDC(overall=overall, individual=individual)
