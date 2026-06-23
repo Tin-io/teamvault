@@ -38,6 +38,19 @@ Liveness probe — always returns 200 if the app process is up.
 
 `halted_reason` (added in P1.1) is non-null when `git_sync` has halted on a state requiring human acknowledgement: upstream history rewrote (force-push) or local working tree dirty. The loop short-circuits subsequent cycles until cleared via `POST /confirm-rewind`. `last_error` mirrors `halted_reason` while halted.
 
+The `compliance` field (P0.7) reports the machine-wide egress posture. Under `strict` the listed invariants apply to every space the sidecar serves, not just the compliance space — see "Compliance posture" below for the full contract.
+
+```json
+"compliance": {
+  "posture": "strict | permissive",
+  "local_embedding_only": true,
+  "remote_inference_blocked": true,
+  "cross_space_scrubbers": true,
+  "strictest_regime_search_scrubbing": true,
+  "compliance_true_spaces": ["<space>"]
+}
+```
+
 ### `GET /readyz`
 
 Readiness probe distinct from `/healthz`. Returns 200 only when at least one space is registered AND has completed a reindex (`last_indexed` non-null) AND has no recorded `last_error`. Returns 503 with a structured `reason` otherwise. K8s liveness-vs-readiness pattern.
@@ -231,6 +244,43 @@ Path mirrors the entry's `kingdom/palace/wing/hall/room` frontmatter exactly. Us
 The sidecar's reindex walks `kb/entries/` recursively (`Path.rglob("*.md")`), so any depth works.
 
 ---
+
+## Compliance posture (P0.7)
+
+When ANY registered space has `compliance: true`, the sidecar enforces a **strict** egress posture machine-wide, not just within that space:
+
+| Invariant                            | Meaning                                                                  | v0.0 enforcement                                  |
+|--------------------------------------|--------------------------------------------------------------------------|---------------------------------------------------|
+| `local_embedding_only`               | embedding model runs on-device, never hits a remote API                  | structural — Nomic via `sentence-transformers`    |
+| `remote_inference_blocked`           | no LLM calls to external APIs from the sidecar                           | structural — reviewers are regex, no LLM in code  |
+| `cross_space_scrubbers`              | search/publish content is run through the UNION of all compliance-true spaces' enabled packs, even when reading from a permissive space | enforced by `compliance.make_scrubber()` closure  |
+| `strictest_regime_search_scrubbing`  | search results (`chunk`, `path`, `metadata` string values) are scrubbed by the same union before being returned | enforced in `search.hybrid_search`                |
+
+Surfaced in `/healthz.compliance` at boot.
+
+### Read-path defense — fail-closed semantics
+
+The scrubbing pipeline is **fail-closed**: if the union scrubber cannot complete a scrub (broken regex, oversize input, pack runtime can't load), the affected field returns the sentinel `[SCRUB_UNAVAILABLE]` rather than unscrubbed text. A consumer seeing this in a search result knows the underlying content could not be safely scrubbed and should treat the field as redacted.
+
+For metadata `bytes` values, the sentinel is `b"[REDACTED-BINARY]"` when the bytes can't be UTF-8 decoded (regex engines need text; opaque binary content is treated as a leak vector under strict posture).
+
+### Per-query scrubber closure
+
+`compliance.make_scrubber()` returns a **closure with a snapshot** of every compliance-true space's PackRuntime, loaded ONCE. The closure is called many times per query (per chunk, per metadata string) without re-instantiating PackRuntime. This avoids the 100+ PackRuntime-per-search self-DoS the naive per-call design would have caused, and closes the TOCTOU race where space.yaml could change mid-query.
+
+### v0.0 single-space deployment — what's actually defended
+
+The sidecar registers ONE space (via `TEAMVAULT_SPACE_ROOT`). The cross-space / strictest-regime semantics still kick in the moment that one space has `compliance: true` — the posture flips to `strict` and search-result scrubbing engages.
+
+**Under v0.0 single-space with a broken pack in the compliance space:** the read-path defense disables (the union has no working members). Search/publish return `[SCRUB_UNAVAILABLE]` instead of unscrubbed content. The remaining defense layer is the **commit / PR gate** (`pack_runtime.fan_out_review` via P0.6) which still BLOCKS commit + publish under the same conditions. v0.1 adds true multi-space so the union has fallback members.
+
+**Out of scope for v0.0:** multi-process binding (a space bound after sidecar boot is invisible until restart); `/healthz` posture caching (every probe re-reads space.yaml). Both tracked as v0.1 hardening.
+
+### Malformed `space.yaml`
+
+`_read_compliance` returns `True` (presume-strict / safe-mode) on YAML parse error — matches `PackRuntime._read_compliance` so the commit-gate and the read-path posture stay consistent under a broken config. Returning `False` would create a window where /healthz reports `permissive` (no scrubbing) while pack_runtime would block writes — easy to land in by accident with a half-saved space.yaml.
+
+Tests: `.build/test_compliance_egress.py`.
 
 ## Runtime env vars
 
