@@ -120,6 +120,26 @@ contributions:
 
 v0.1+ extensions to the contract (per [ROADMAP.md::P2.4](ROADMAP.md)): `ordering`, `mode: veto`, `on_error: fail | skip | warn`, `depends_on`, `mutually_exclusive_with`, `timeout_s`, per-reviewer `token_budget`.
 
+### Failure modes (P0.6)
+
+The pack runtime can fail in several ways. v0.0 enumerates and tests these modes with **required block behavior for `compliance: true` spaces**. The runtime never silently fails open under `compliance: true`.
+
+| Failure          | When                                                  | `compliance: true` | `compliance: false` |
+|------------------|-------------------------------------------------------|--------------------|---------------------|
+| `missing_file`   | PACK.yaml references a scrubber YAML that doesn't exist | BLOCK              | ADVISORY            |
+| `malformed_yaml` | YAMLError loading PACK.yaml or a scrubber YAML        | BLOCK              | ADVISORY            |
+| `regex_compile`  | a pattern's regex doesn't compile (e.g., `[unclosed`) | BLOCK              | ADVISORY            |
+| `oversize_input` | diff exceeds 10 MB (proxy for timeout / OOM)          | BLOCK              | ADVISORY            |
+| timeout / OOM (direct) | Python `re` has no timeout; can't detect at runtime | deferred to v0.1 (proxied by oversize cap) | same |
+
+Failures synthesize a verdict with `agent: "__scrubber_health__"`. On `compliance: true` spaces the synthetic verdict is `mode: blocking` and `overall = "block"`; on `compliance: false` spaces it's `mode: advisory` and `overall` stays `pass` (unless a real scrubber match also fires).
+
+**Malformed `space.yaml`:** PackRuntime falls back to `compliance: false` rather than assuming `true` — assuming compliance from a broken config would block all commits with no clear remediation path. The broken-space-yaml load failure IS still reported in the verdict via the `__space_yaml__` synthetic pack.
+
+**fan_out_scrub vs fan_out_review:** the strict fail-closed semantics live on `fan_out_review` (commit + PR gate). `fan_out_scrub` (used by `/publish` at write time) keeps the v0.0 silent-skip-on-regex-error behavior; hardening it is a follow-up once `publish.py` grows a way to surface runtime errors back to the caller.
+
+Tests: `.build/test_pack_runtime_failure_modes.py` (12 cases covering the matrix).
+
 ### Pack discovery & loading
 
 - Discovery glob: `${SPACE_ROOT}/packs/*/PACK.yaml`
