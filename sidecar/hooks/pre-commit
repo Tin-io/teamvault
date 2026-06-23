@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# TeamVault pre-commit hook — scrub staged kb/** for blocking pack matches.
+#
+# Source: P0.2 (docs/ROADMAP.md). Installed by /teamvault-setup §4.5;
+# refresh by re-running setup. Do not edit in place — your changes will be
+# overwritten on the next setup re-run.
+#
+# Exit codes:
+#   0 = no kb/ changes, no enabled packs, all clean, advisory-only matches, OR
+#       fail-open conditions (not in a git repo, sidecar venv missing)
+#   1 = a blocking pack reviewer matched — commit refused
+#   2 = tooling error reachable from the Python script (git diff failed, pack
+#       runtime not importable). Bash-side issues fail-open at exit 0.
+
+set -uo pipefail
+
+SPACE_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$SPACE_DIR" ]; then
+  echo "teamvault pre-commit: not in a git repo (or git rev-parse failed) — skipping" >&2
+  exit 0
+fi
+
+PYTHON="$SPACE_DIR/sidecar/.venv/bin/python"
+
+if [ ! -x "$PYTHON" ]; then
+  # Fail-open: don't block commits when teamvault isn't set up. Server-side
+  # workflow (.github/workflows/teamvault-review.yml) is the safety net.
+  echo "teamvault pre-commit: sidecar venv missing at $PYTHON — skipping check" >&2
+  echo "  (re-run /teamvault-setup if you intended scrubber checks)" >&2
+  exit 0
+fi
+
+exec "$PYTHON" -m sidecar.scripts.precommit_kb_scrub

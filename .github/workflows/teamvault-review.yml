@@ -1,3 +1,17 @@
+# TeamVault PR-time review — runs PackRuntime.fan_out_review on every PR's diff
+# and blocks merge when a blocking pack reviewer matches (overall verdict: block).
+#
+# For compliance: true spaces, mark THIS status check as a REQUIRED status check
+# in your branch protection rule (Settings → Branches → Add rule → "Require
+# status checks to pass before merging" → add `review` — that's the JOB name
+# below, which is what GitHub uses for the check name, NOT the workflow name).
+# Without that flag a contributor can bypass the local pre-commit hook AND
+# merge a PR this workflow flagged as blocking.
+#
+# Companion: sidecar/hooks/pre-commit (early local feedback) — installed by
+# /teamvault-setup §4.5. The hook and this workflow share the same
+# PackRuntime engine, so verdicts stay consistent. Reference: P0.2 in ROADMAP.
+
 name: teamvault-review
 
 on:
