@@ -195,6 +195,37 @@ python3 -m venv .venv
 
 **Tell the user explicitly:** "This install pulls torch (~2.5 GB) and downloads the Nomic embedding model (~547 MB) on first reindex. On corporate Wi-Fi this can take 5–10 minutes; on conference Wi-Fi with multiple devs hitting PyPI simultaneously, plan 15–30 minutes. For a tight demo, have devs install ahead of time."
 
+### 4.5. Install pre-commit scrubber hook (P0.2 — compliance defense layer)
+
+The master template ships a pre-commit hook at `sidecar/hooks/pre-commit` that runs `PackRuntime.fan_out_review` against staged `kb/**` content before each commit. Match against a blocking pack reviewer → commit refused with the pattern name. Installed by copying into `$SPACE_DIR/.git/hooks/pre-commit`.
+
+```bash
+HOOK_SRC="$SPACE_DIR/sidecar/hooks/pre-commit"
+# Resolve the per-worktree hooks dir. `git rev-parse --absolute-git-dir` returns
+# the actual gitdir even when $SPACE_DIR/.git is a file (git-worktree case);
+# a plain `$SPACE_DIR/.git/hooks` path would fail there.
+HOOK_DST_DIR="$(git -C "$SPACE_DIR" rev-parse --absolute-git-dir)/hooks"
+HOOK_DST="$HOOK_DST_DIR/pre-commit"
+mkdir -p "$HOOK_DST_DIR"
+
+if [ ! -f "$HOOK_SRC" ]; then
+    echo "skip pre-commit install: hook source missing at $HOOK_SRC"
+elif [ -f "$HOOK_DST" ] && ! grep -q 'TeamVault pre-commit hook' "$HOOK_DST"; then
+    # Foreign pre-commit hook already in place — don't silently overwrite.
+    echo "WARN: $HOOK_DST exists and is NOT the TeamVault hook. Skipping install."
+    echo "  Either rename it to chain calls, or remove it to let TeamVault own pre-commit."
+else
+    install -m 0755 "$HOOK_SRC" "$HOOK_DST"
+    echo "installed pre-commit hook at $HOOK_DST"
+fi
+```
+
+**Copy, not symlink.** Symlinks across `~/Projects/teamvault/sidecar/` to the space's `.git/hooks/` would break in setups where the sidecar lives outside the space dir (e.g., a substrate-decoupled install). Copy is robust; re-run setup to refresh after upstream changes the hook.
+
+**Space repo only — not bound project repos.** `kb/**` only exists in the space repo. Bound project repos don't have a knowledge base directory; installing the hook there would be a no-op tax on every commit.
+
+**Compliance: true note.** The hook is local-machine defense — bypassable with `git commit --no-verify`. For `compliance: true` spaces, ALSO mark `teamvault-review` as a **required status check** in the space repo's branch protection rule (Settings → Branches → Add rule → "Require status checks to pass before merging"). The hook catches early; the GHA workflow catches definitively. Without the branch-protection rule, a contributor can bypass the local hook AND merge a PR that the workflow flagged.
+
 ### 5. Generate launchd plist
 
 The plist must run uvicorn with the **sidecar package importable on `sys.path`**. Setting `WorkingDirectory` to `$SPACE_DIR` and adding `PYTHONPATH=$SPACE_DIR` is the simplest correct shape.
