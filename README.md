@@ -24,7 +24,7 @@
 
 Your team forks this repo as a "space" (or stays in this master template). Each dev clones the space; a local Python sidecar watches the clone, re-indexes `kb/entries/**/*.md` recursively on `git pull` into a hybrid (BM25 + vector + RRF) search index, and exposes six MCP tools to Claude Code or Codex: `vault_search`, `vault_publish`, `vault_status`, `vault_packs`, `vault_cite`, `vault_query_log`. One teammate publishes a decision; ~60 seconds later every teammate's agent can search it. Humans read the same markdown directly in GitHub.
 
-**Packs** extend the runtime — drop a `packs/hipaa-reference/` directory with regex patterns + a reviewer agent prompt, and every PR gets reviewed for PHI leaks (blocking). Drop a `packs/clickup-linkage/` or `packs/jira-linkage/` directory and PRs without ticket links get flagged. The runtime is generic; what your team cares about is declared in packs you enable in `space.yaml`.
+**Packs** extend the runtime — drop a `packs/<name>/` directory with regex patterns + a reviewer agent prompt, and every PR gets reviewed (advisory or blocking per the pack's mode). The bundled `hipaa-reference` pack is a **reference example** of the pattern for PHI detection — read [`packs/hipaa-reference/README.md`](packs/hipaa-reference/README.md) for what it does and (importantly) doesn't do before enabling it on real data. The `clickup-linkage` / `jira-linkage` packs are advisory ticket-link checks. The runtime is generic; what your team cares about is declared in packs you enable in `space.yaml`.
 
 ## 🚀 Install
 

@@ -1,9 +1,19 @@
+# ============================================================================
+# REFERENCE PACK ONLY — not a HIPAA compliance control, not legal advice.
+# Read packs/hipaa-reference/README.md before enabling this pack on real data.
+# See the repository LICENSE for the liability disclaimer.
+# ============================================================================
+
 name: hipaa-reference
-version: 0.1.0
+version: 0.1.1
 description: >
-  HIPAA PHI detection reference pack. Detects common PHI patterns (MRN, SSN, NPI,
-  DOB-with-prefix) in PRs and at publish time. REFERENCE PACK ONLY — not a complete
-  HIPAA compliance control. See LICENSE for disclaimer.
+  Reference example of a pack contributing PHI-pattern scrubbers + a reviewer
+  agent. Ships a small starting set of regex patterns (MRN, SSN, NPI,
+  partial-DOB) and wires them into the pack runtime as one layer of defense.
+  NOT a HIPAA compliance control. NOT certified. NOT a substitute for BAAs,
+  organizational controls, legal review, or a real compliance officer. See
+  packs/hipaa-reference/README.md for the full positioning + what teams must
+  do before relying on it.
 
 knowledge_topics:
   - hipaa
