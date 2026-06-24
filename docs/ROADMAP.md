@@ -107,7 +107,7 @@ Built post-base-v0.0 and merged into `main`. Tiers below were authored *before* 
 **Shipped 2026-06-22 Mon late (PRs #10–#15):**
 - **ROADMAP refresh for Wed-AM sprint** ✅ PR #10 — this file's previous sprint-block revision.
 - **P1.1 — `git_sync` UX hardening** ✅ PR #11 — `sidecar/git_sync.py` + `sidecar/app.py`. Subprocess-based timeouts (`TEAMVAULT_GIT_TIMEOUT_S`), halt flag (`halted_reason`), `on_sync_state` callback writing `_spaces[space]`, `POST /confirm-rewind` endpoint to clear halts, `_AUTH_FAIL_MARKERS` classifier, logger moved to `teamvault.sidecar.git_sync`.
-- **P1.1 follow-up — GitHub-404-as-auth-failure + scrubber-friendly hint** ✅ PR #14 (re-landed from orphaned #12) — added `Repository not found` + `fatal: repository '` to `_AUTH_FAIL_MARKERS`; reworded SSH hint to dodge HIPAA pack's email-regex false-positive on `git@github.com`.
+- **P1.1 follow-up — GitHub-404-as-auth-failure + scrubber-friendly hint** ✅ PR #14 (re-landed from orphaned #12) — added `Repository not found` + `fatal: repository '` to `_AUTH_FAIL_MARKERS`; reworded SSH hint to dodge the HIPAA pack's email-regex false-positive on SSH URL forms (placeholder-host wording instead of a literal domain).
 - **Pack-skills contract extension** ✅ PR #13 — `contributions.skills:` in PACK.yaml; rename `clickup-linkage` → `clickup`; `/start-clickup` SKILL.md ships inside `packs/clickup/skills/`; new `/teamvault-setup` §7.7 deploys pack-shipped skills (user-global default; project-local override via Claude Code native precedence).
 - **`/new-clickup` skill** ✅ PR #15 — single-ticket + batch mode; `mcp__clickup__clickup_create_task` as canonical write call; ships inside `packs/clickup/skills/new-clickup/`.
 
