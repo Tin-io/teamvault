@@ -41,6 +41,62 @@ Then derive `SPACE_URL=https://github.com/<their-org>/teamvault-<team>` and proc
 
 Either branch ends with `SPACE_URL` captured.
 
+### 1.5. Multi-account `gh` sanity check (macOS gotcha, github.com only)
+
+**Skip this section if the user has only one gh account logged in.** Otherwise: if the user has multiple `gh` accounts AND their active account does not own the space repo, HTTPS git operations against the space will fail later with `Repository not found` — the `gh` credential helper resolves credentials for the ACTIVE account, not the one that owns the repo. Catch proactively so the clone uses SSH and side-steps the credential-helper entirely.
+
+**Scope:** github.com only. If the user's `SPACE_URL` points at GitHub Enterprise, GitLab, or any non-`github.com` host, the bash below skips the multi-account check and `$2` falls through to `SPACE_URL` as-is. Enterprise/GitLab users with the same multi-account-credential-helper gotcha need a separate fix (filed as a follow-up; see PR description).
+
+```bash
+USE_SSH_ORIGIN=0  # default; case below may override for github.com hosts
+
+case "$SPACE_URL" in
+  https://github.com/*|git@github.com:*)
+    # Count gh accounts + identify active user.
+    GH_ACCOUNT_COUNT=$(gh auth status 2>&1 | grep -cE "Logged in to github\.com account")
+    ACTIVE_GH_USER=$(gh api user --jq .login 2>/dev/null || echo "")
+
+    # Owner of the space repo, extracted from SPACE_URL (works for https + ssh forms).
+    REPO_OWNER=$(echo "$SPACE_URL" | sed -E 's|https?://github\.com/([^/]+)/.*|\1|; s|git@github\.com:([^/]+)/.*|\1|; s|\.git$||')
+
+    if [ "$GH_ACCOUNT_COUNT" -gt 1 ] && [ -n "$ACTIVE_GH_USER" ] && [ "$ACTIVE_GH_USER" != "$REPO_OWNER" ]; then
+      USE_SSH_ORIGIN=1
+      cat <<MSG
+⚠️  Multi-account gh detected:
+      accounts logged in:   $GH_ACCOUNT_COUNT
+      active account:       $ACTIVE_GH_USER
+      space repo owner:     $REPO_OWNER
+
+    HTTPS clone via the gh credential helper uses the ACTIVE account; if
+    "$REPO_OWNER"'s repo is private, the clone (and subsequent git_sync
+    pulls) will fail with "Repository not found".
+
+    Switching the clone to SSH so git operations use your ssh key and
+    side-step gh credential-helper account selection entirely. This is
+    the durable fix; "gh auth switch" would also work but mutates
+    global state for every repo you touch afterwards.
+MSG
+    fi
+    ;;
+  *)
+    echo "ℹ️  §1.5 multi-account check is github.com-only — skipping for non-github.com SPACE_URL ($SPACE_URL). HTTPS clone will be used as-is; multi-account credential-helper issues on enterprise/GitLab hosts are tracked as a separate follow-up."
+    ;;
+esac
+```
+
+The §2 clone below uses `CLONE_URL` derived from this decision:
+
+```bash
+# Picked here so §2 doesn't need a conditional on the clone line itself.
+if [ "$USE_SSH_ORIGIN" = "1" ]; then
+  CLONE_URL="git@github.com:${REPO_OWNER}/$(basename "$SPACE_URL" | sed 's/\.git$//').git"
+else
+  CLONE_URL="$SPACE_URL"
+fi
+```
+
+**Caveat to surface if SSH is chosen:** the user must already have a working ssh key configured against `$REPO_OWNER`'s GitHub account. If not, the §2 clone will fail with `Permission denied (publickey)` — at that point, either set up the ssh key (preferred, durable) or unset `USE_SSH_ORIGIN` and run `gh auth switch -u $REPO_OWNER` before re-running §2 (the gh-switch path mutates global state for the user's other repos, so the SSH-key path is preferred).
+
 ### 2. Derive paths + clone the space + reconcile space.yaml::name
 
 ```bash
@@ -48,7 +104,8 @@ SPACE_URL=<from user, captured in §1>
 SPACE_NAME=$(basename "$SPACE_URL" | sed 's/\.git$//')
 SPACE_DIR="$HOME/$SPACE_NAME"   # e.g. ~/teamvault-<space>
 mkdir -p "$HOME/.teamvault/logs" "$HOME/Library/LaunchAgents"
-git clone "$SPACE_URL" "$SPACE_DIR"
+# CLONE_URL is SPACE_URL when single-account; SSH form when §1.5 picked SSH.
+git clone "${CLONE_URL:-$SPACE_URL}" "$SPACE_DIR"
 ```
 
 **Reconcile `space.yaml::name` with SPACE_NAME.** The master template ships with
