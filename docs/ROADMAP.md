@@ -6,49 +6,57 @@
   <img src="https://img.shields.io/badge/status-active%20sprint%20%E2%86%92%20Wed%206%2F24-blue?style=flat-square" alt="Active sprint to Wed 6/24">
 </p>
 
-## 🚀 2026-06-22 Wed-AM-deadline sprint
+## 🚀 Wed-AM-deadline sprint — STATUS (refreshed 2026-06-23 Tue evening)
 
-Install meeting with the first design-partner team pushed to **Wed 6/24 AM**. Substrate must be install-ready and HIPAA-defensible by then. Day-by-day operational plan in `HANDOFF.md` (gitignored).
+Install meeting with the first design-partner team **Wed 6/24 AM**. Substrate must be install-ready and HIPAA-defensible by then. Day-by-day operational plan in `HANDOFF.md` (gitignored).
 
-**✅ SHIPPED 2026-06-21/22** (PRs #1–#9 in `main`):
+**Demo posture is materially stronger than at sprint start.** The 3 HIPAA-critical defenses are in `main`: (1) pre-commit hook refuses PHI in `kb/**` BEFORE commit lands (P0.2); (2) pack runtime fail-closed under `compliance: true` (P0.6); (3) machine-wide `/healthz.compliance` posture with fail-closed `[SCRUB_UNAVAILABLE]` sentinel on search (P0.7).
 
-- ROADMAP+STRATEGY reconcile (#1)
-- pr-* skill family + `code-structure` reference (#2)
-- Install polish — conversational SETUP_PROMPT + SKILL.md hardening (#3)
-- **P1.13** /readyz + PID lockfile · **P1.4** structured logs + rotation (#4)
-- **P1.2** /teamvault-doctor skill (#5)
-- Memory Palace taxonomy bridged into templates + recursive ingest (#6)
-- v0.1.x docs refresh + fork model + maintenance guides (#7)
-- Setup §7.6 substrate-skill auto-deploy (#8)
-- /discover → /agent-board rename + pr-push base-branch generalization (#9)
+**✅ SHIPPED 2026-06-21/22 — PRs #1–#9** (Phase A + Week-1 reliability + setup polish):
+- ROADMAP+STRATEGY reconcile (#1) · pr-* skill family + `code-structure` reference (#2) · Install polish — conversational SETUP_PROMPT + SKILL.md hardening (#3)
+- **P1.13** /readyz + PID lockfile · **P1.4** structured logs + rotation (#4) · **P1.2** /teamvault-doctor skill (#5)
+- Memory Palace taxonomy bridge + recursive ingest (#6) · v0.1.x docs refresh + fork model + maintenance guides (#7)
+- Setup §7.6 substrate-skill auto-deploy (#8) · /discover → /agent-board rename + pr-push base-branch generalization (#9)
 
-**🔄 IN-FLIGHT — Tue 6/23** (~10–12h focused, in order):
+**✅ SHIPPED 2026-06-22 Mon late — PRs #10–#15** (Week-1 close-out + pack-skills contract):
+- ROADMAP refresh for Wed-AM sprint (#10)
+- **P1.1** `git_sync` UX hardening (#11) — subprocess timeouts (`TEAMVAULT_GIT_TIMEOUT_S`), halt flag + `/confirm-rewind`, `_AUTH_FAIL_MARKERS`, logger namespace move
+- **P1.1 follow-up** classify GitHub 404 "Repository not found" as auth failure + scrubber-friendly SSH hint (#14 — re-landed from orphaned #12)
+- **Pack-skills contract** (#13) — `contributions.skills:` in PACK.yaml; rename `clickup-linkage` → `clickup`; `/start-clickup` ships inside the pack; setup §7.7 auto-deploys pack-shipped skills
+- **/new-clickup skill** (#15) — single-ticket + batch mode
 
-1. **P1.1** `git_sync` UX hardening (~4h) — last Week-1 reliability item
-2. **P0.2** pre-commit + pre-receive scrubber hooks (~2h) — closes the "dev edits `kb/` directly" PHI leak
-3. **P1.6** temporal decay in ranking (~2h) — recency multiplier before KB grows
-4. **P0.4** `hipaa-reference` pack repo split (~2h) — legal + optics
-5. **P0.6** fail-closed scrubber contract enumeration (~3h) — HIPAA hardening
+**✅ SHIPPED 2026-06-23 Tue — PRs #16–#18** (HIPAA hardening sprint):
+- **P0.2** pre-commit + pre-receive scrubber hooks (#16) — closes the "dev edits `kb/` directly, bypassing `/teamvault-publish`" PHI leak; declared existing `.github/workflows/teamvault-review.yml` sufficient for the pre-receive piece
+- **P0.6** fail-closed scrubber contract enumeration (#17) — every scrubber failure mode (missing file, malformed YAML, regex compile error, oversize, unresolved pack, degenerate pack, broken space.yaml) synthesizes a blocking `scrubber-health` verdict for `compliance: true` spaces; **5 HIGH + 6 MEDIUM critic-surfaced bypass paths closed before PR opened**
+- **P0.7** data-egress invariants for `compliance: true` spaces (#18) — machine-wide compliance posture in `/healthz.compliance`; fail-closed `[SCRUB_UNAVAILABLE]` sentinel on search path; per-query scrubber closure pattern (single PackRuntime snapshot — prevents 130+ per-/search self-DoS); scrubs chunk + path + metadata
 
-**🔄 IN-FLIGHT — Wed 6/24 AM** (~3h pre-meeting):
+**🔄 REMAINING — Wed 6/24 AM pre-meeting:**
 
-6. **P0.7** data-egress invariants for `compliance: true` spaces (~3h)
-7. **P1.16** `/teamvault-cost` skill (~2h) — HIPAA reviewer fan-out is heaviest cost vector
-8. Final dress rehearsal — clean macOS sandbox install end-to-end
+1. **Restart sidecar** (~30s, MUST-DO) — running sidecar on :8123 predates P0.7 and won't show `/healthz.compliance` field until kicked.
+   ```bash
+   launchctl kickstart -k gui/$(id -u)/dev.teamvault.sidecar
+   sleep 8
+   curl -s http://localhost:8123/healthz | jq '.compliance'   # expect posture=permissive (teamvault-personal has compliance: false)
+   ```
 
-**Stretch (if Tue ahead of schedule):**
+**Optional polish (if time):**
 
-- **P2.5** `/agent-board` cross-repo agent comms skeleton (~6h)
+- **P1.6** temporal decay in ranking (~2h, high) — pure search-quality; doesn't touch HIPAA pathways → low regression risk. Adds `created_at` multiplier (1.0× ≤30d → 0.5× floor at 365d) + access_count counter. Without it, week-3 sessions get drowned by week-1 noise.
+- **P0.4** move `hipaa-reference` pack to its own repo (~2h, urgent) — legal optics + maintainer exposure reduction. NOT demo-blocking.
+- **Final dress rehearsal** — clean macOS sandbox install end-to-end to catch anything broken during the Tue sprint.
 
 **⏭️ Post-meeting (v0.1.5+):**
 
-- **P0.3** legal review of HIPAA pack disclaimer — worth starting the lawyer conversation Tue so it's in flight
+- **P0.3** legal review of HIPAA pack disclaimer — start the lawyer conversation Wed afternoon
 - **P0.8** breach-response runbook (pairs with P0.3)
+- **P1.16** `/teamvault-cost` skill — polish, not safety; demoted from Wed-AM plan
+- **`/review-clickup` skill** — third of the ClickUp lifecycle trio; mirrors `/review-ticket` (Jira) shape; would ship inside `packs/clickup/skills/`
 - **Light Palace auto-fill cascade** — `/teamvault-publish` auto-fills `kingdom/palace/wing` from `repos.yaml`; soft WARN if entry's `kingdom` ∉ `space.yaml::kingdoms`
-- `/teamvault-deploy-skills` standalone skill (meanwhile re-run `teamvault-setup` to trigger §7.6)
+- `/teamvault-deploy-skills` standalone skill (meanwhile re-run `teamvault-setup` to trigger §7.6 / §7.7)
 - `/teamvault-upstream-sync` (P2.14), `/teamvault-pack-upgrade` (P2.13)
 - Multi-space sidecar (pulled forward from P3)
 - `get_company_context` MCP tool (P2.12)
+- **Dogfood-surfaced gaps** (in ClickUp Backlog) — `publish.py` flat-path writes ignore Palace fields; MCP `vault_publish` lacks `frontmatter` dict parameter; nested-metadata makes tags invisible to search; `/teamvault-setup` should warn at gh-auth step about multi-account macOS; `/teamvault-doctor` Layer 2 remote-URL-vs-active-gh-user check; HIPAA pack email regex over-matches SSH URL forms.
 
 ---
 
@@ -96,6 +104,18 @@ Built post-base-v0.0 and merged into `main`. Tiers below were authored *before* 
 - **Setup §7.6 substrate-skill auto-deploy** ✅ PR #8 — re-running `teamvault-setup` refreshes `~/.claude/skills/teamvault-*`.
 - **`/discover` → `/agent-board` rename + pr-push base-branch generalization** ✅ PR #9 — P2.5 section title; per-space `agent-board/` dir; `TEAMVAULT_PR_BASE_BRANCH` env var replaces hardcoded `staging` resolver.
 
+**Shipped 2026-06-22 Mon late (PRs #10–#15):**
+- **ROADMAP refresh for Wed-AM sprint** ✅ PR #10 — this file's previous sprint-block revision.
+- **P1.1 — `git_sync` UX hardening** ✅ PR #11 — `sidecar/git_sync.py` + `sidecar/app.py`. Subprocess-based timeouts (`TEAMVAULT_GIT_TIMEOUT_S`), halt flag (`halted_reason`), `on_sync_state` callback writing `_spaces[space]`, `POST /confirm-rewind` endpoint to clear halts, `_AUTH_FAIL_MARKERS` classifier, logger moved to `teamvault.sidecar.git_sync`.
+- **P1.1 follow-up — GitHub-404-as-auth-failure + scrubber-friendly hint** ✅ PR #14 (re-landed from orphaned #12) — added `Repository not found` + `fatal: repository '` to `_AUTH_FAIL_MARKERS`; reworded SSH hint to dodge the HIPAA pack's email-regex false-positive on SSH URL forms (placeholder-host wording instead of a literal domain).
+- **Pack-skills contract extension** ✅ PR #13 — `contributions.skills:` in PACK.yaml; rename `clickup-linkage` → `clickup`; `/start-clickup` SKILL.md ships inside `packs/clickup/skills/`; new `/teamvault-setup` §7.7 deploys pack-shipped skills (user-global default; project-local override via Claude Code native precedence).
+- **`/new-clickup` skill** ✅ PR #15 — single-ticket + batch mode; `mcp__clickup__clickup_create_task` as canonical write call; ships inside `packs/clickup/skills/new-clickup/`.
+
+**Shipped 2026-06-23 Tue (PRs #16–#18 — HIPAA hardening sprint):**
+- **P0.2 — Pre-commit `kb/**` scrubber hook** ✅ PR #16 — `.git/hooks/pre-commit` (installed by `teamvault-setup`); pre-receive piece covered by existing `.github/workflows/teamvault-review.yml`. Pitfall closed: `sc_file.exists()` returning True for directories → traceback → `--no-verify` → PHI ships; fixed with `is_file()` + try/except OSError.
+- **P0.6 — Fail-closed scrubber contract enumeration** ✅ PR #17 — `scrubber-health` synthetic agent emits one verdict shape for every failure mode (missing file, malformed YAML, regex compile error, oversize input, unresolved pack, degenerate pack, broken `space.yaml`). `len(text.encode("utf-8"))` replaces `len(text)` for byte-accurate size cap. 5 HIGH + 6 MEDIUM critic-surfaced bypass paths closed before PR opened. 20/20 in `.build/test_pack_runtime_failure_modes.py`.
+- **P0.7 — Data-egress invariants for compliance spaces** ✅ PR #18 — `/healthz.compliance.posture = strict` when any space has `compliance: true`; fail-closed `[SCRUB_UNAVAILABLE]` sentinel in search path; per-query `compliance.make_scrubber()` closure (PackRuntime snapshot loaded ONCE per query — was 130+ per /search; self-DoS vector closed); `hybrid_search` scrubs chunk + path + metadata; `scrub_metadata` handles bytes + tuples + datetime. 11/11 in `.build/test_compliance_egress.py`.
+
 ---
 
 ## 🚨 P0 — Compliance & demo follow-through
@@ -119,16 +139,16 @@ Retention: 6 years documented (HIPAA §164.530(j)(2)). Rotation deferred.
 
 Surface in `/teamvault-status`.
 
-### 🛡️ P0.2 — Pre-commit + pre-receive scrubber hooks [HIPAA] [SIZE: S ~2h]
+### ✅ P0.2 — Pre-commit + pre-receive scrubber hooks — SHIPPED PR #16 [HIPAA] [SIZE: S ~2h]
 
 Source: Sec critic F3.
 
-Close the "dev edits `kb/` directly, bypassing `/teamvault-publish`" leak path. Two hooks:
+Closes the "dev edits `kb/` directly, bypassing `/teamvault-publish`" leak path. Two hooks:
 
-- **Pre-commit hook** (installed by `teamvault-setup`): runs the pack scrubbers against staged `kb/**` content before commit. Match → commit refused with the pattern name.
-- **Pre-receive GHA workflow** (added to the master template): server-side check on `kb/**` paths in any PR. Required status if compliance: true. Match → PR cannot merge.
+- **Pre-commit hook** (`.git/hooks/pre-commit`, installed by `teamvault-setup`): runs the pack scrubbers against staged `kb/**` content before commit. Match → commit refused with the pattern name. Smoke test at `.build/smoke_p0_2_precommit.sh` (4/4 cases).
+- **Pre-receive piece** — declared existing `.github/workflows/teamvault-review.yml` sufficient (option C); avoided shipping a redundant kb-only workflow.
 
-Pack runtime can be reused as-is.
+Pack runtime reused as-is. Pitfalls closed in implementation: `sc_file.exists()` returning True for directories → `IsADirectoryError` traceback path → user runs `--no-verify` → PHI ships; fixed with `is_file()` + try/except OSError.
 
 ### 📜 P0.3 — Liability disclaimer + legal review [HIPAA] [OSS] [SIZE: S ~legal review time]
 
@@ -146,15 +166,16 @@ Move `packs/hipaa-reference/` to `tin-io/teamvault-pack-hipaa-reference`. Refere
 
 ## ⚡ P1 — Reliability & demo polish
 
-### 🦾 P1.1 — `git_sync` UX hardening [OPS] [SIZE: M ~4h]
+### ✅ P1.1 — `git_sync` UX hardening — SHIPPED PR #11 + #14 [OPS] [SIZE: M ~4h]
 
-Source: Code critic F6 (already wired in Phase 2), Sec critic F10, R3 F1+F4.
+Source: Code critic F6 (already wired in Phase 2), Sec critic F10, R3 F1+F4. Lives at `sidecar/git_sync.py` + `sidecar/app.py`.
 
-- Surface `git_sync` state in `/healthz` (currently `last_pull` is always null)
-- On non-fast-forward upstream: `space.last_error = "upstream history rewrote — run /teamvault-confirm-rewind to acknowledge"` and stop pulling
-- On dirty working tree: same pattern, surface clearly
-- `git fetch`/`pull` timeout (30s) — currently can hang indefinitely
-- Surface auth failures with `gh auth refresh` suggestion
+- ✅ `last_pull` + `last_error` + `halted_reason` surfaced in `/healthz` via `on_sync_state` callback
+- ✅ Non-fast-forward upstream → `halted_reason="upstream history rewrote — run /teamvault-confirm-rewind to acknowledge"`; loop short-circuits until cleared via `POST /confirm-rewind`
+- ✅ Dirty working tree → same halt pattern with clear error
+- ✅ Subprocess-based `git fetch`/`pull` timeout (default 30s; override via `TEAMVAULT_GIT_TIMEOUT_S`)
+- ✅ Auth-failure classification via `_AUTH_FAIL_MARKERS` (incl. GitHub 404 "Repository not found" per PR #14); hint suggests `gh auth refresh` AND switching origin to SSH for multi-account users
+- ✅ Logger moved to `teamvault.sidecar.git_sync` namespace so P1.4's handlers (JSON file + stderr + recent_errors) capture records
 
 ### ✅ P1.2 — `/teamvault-doctor` — SHIPPED PR #5 [DX] [OPS] [SIZE: S ~2h]
 
@@ -381,20 +402,20 @@ Source: USER_GUIDE.md / TROUBLESHOOTING.md OS-support commitment.
 
 **Week 1 (first-team bedding-in):**
 - ✅ P0.1 audit log
-- 🔄 P0.2 pre-commit hooks (close the kb/ direct-edit leak)
-- 🔄 P1.1 git_sync UX hardening (early ops issues surface here)
+- ✅ P0.2 pre-commit hooks (close the kb/ direct-edit leak) — PR #16
+- ✅ P1.1 git_sync UX hardening — PR #11 + #14
 - ✅ P1.2 /teamvault-doctor
 - ✅ P1.4 structured logs + rotation
 - ✅ P1.13 /readyz + PID-lockfile
 
 **Week 2 (second design partner):**
-- ⏭️ P0.3 legal review (parallel; needs lawyer — start Tue)
-- 🔄 P0.4 hipaa-reference repo split (separation is cheap once you decide)
+- ⏭️ P0.3 legal review (parallel; needs lawyer — start Wed afternoon, post-meeting)
+- 🔄 P0.4 hipaa-reference repo split (separation is cheap once you decide) — optional Wed-AM polish
 - ✅ P1.5 contextual prefixes (static; LLM-gen variant still pending)
-- 🔄 P0.6 fail-closed scrubber contract enumeration
-- 🔄 P0.7 data-egress invariants for `compliance: true` spaces
-- 🔄 P1.6 temporal decay in ranking
-- 🔄 P1.16 /teamvault-cost
+- ✅ P0.6 fail-closed scrubber contract enumeration — PR #17
+- ✅ P0.7 data-egress invariants for `compliance: true` spaces — PR #18
+- 🔄 P1.6 temporal decay in ranking — optional Wed-AM polish
+- ⏭️ P1.16 /teamvault-cost — demoted; post-meeting (polish, not safety)
 
 **Weeks 3-4 (broader OSS prep):**
 - P2.1 packs.registry.json (sets the contributor surface)
@@ -417,8 +438,8 @@ A second pass over `ARCHITECTURE_V2_REVIEW.md` against this roadmap surfaced arc
 ### 🛡️ P0 additions (compliance hardening)
 
 - **P0.5 — Snapshot-on-invocation pack-SHA pinning [HIPAA] [ARCH] [SIZE: S ~2h]** — `/teamvault-review` and `/teamvault-publish` already snapshot pack reads at invocation start (POC). Harden: emit `pack_sha` in every verdict's metadata and in the audit log, so reproducibility is bit-exact and a verdict can be re-run later against the same commit.
-- **P0.6 — Fail-closed contract enumeration [HIPAA] [SIZE: S ~3h]** — Document and test every scrubber failure mode (malformed YAML, missing file, regex compile error, timeout, OOM). Each gets a required block behavior for `compliance: true` spaces. Land integration tests for the full matrix.
-- **P0.7 — Data-egress invariants for compliance spaces [HIPAA] [SIZE: S ~3h]** — When ANY installed space declares `compliance: true`, enforce machine-wide: embedding model is local-only, no remote inference calls, cross-space scrubbers run on writes, cross-space search results scrubbed to the strictest regime. Surface in `/healthz` at boot.
+- **✅ P0.6 — Fail-closed contract enumeration — SHIPPED PR #17 [HIPAA] [SIZE: S ~3h]** — Every scrubber failure mode (missing file, malformed YAML, regex compile error, oversize input, unresolved pack, degenerate pack, broken `space.yaml`) synthesizes a blocking `scrubber-health` verdict for `compliance: true` spaces. Hyphenated agent name (not `__name__`) avoids markdown bold rendering in PR-comment tables. `enabled_packs` resolves against directory name OR `PACK.yaml::name` field; mismatch → `unresolved_pack` LoadError. Broken `space.yaml` → `_read_compliance` presumes True; LoadError carries `force_blocking=True`. **5 HIGH + 6 MEDIUM critic-surfaced bypass paths closed before PR opened.** Integration tests at `.build/test_pack_runtime_failure_modes.py` (20/20).
+- **✅ P0.7 — Data-egress invariants for compliance spaces — SHIPPED PR #18 [HIPAA] [SIZE: S ~3h]** — `/healthz.compliance` reports `posture: strict` when any space has `compliance: true`. Search-path scrubbing is fail-closed: on scrubber-pipeline failure, returns visible `[SCRUB_UNAVAILABLE]` sentinel instead of unscrubbed text. `compliance.make_scrubber()` returns a closure with a PackRuntime snapshot loaded ONCE per query (was: per-chunk instantiation = 130+ PackRuntime per /search, a self-DoS vector). `hybrid_search` scrubs chunk, path, AND metadata strings (slug-derived paths can embed identifying info). `scrub_metadata` handles bytes (utf-8 decodable → scrub; opaque → REDACTED_BINARY) + tuple recursion. Integration tests at `.build/test_compliance_egress.py` (11/11).
 - **P0.8 — Breach-response runbook [HIPAA] [SIZE: S ~legal+dev]** — `BREACH_RUNBOOK.md`: BFG / `git filter-repo` recipe to scrub a leaked entry from history; GitHub support template; BAA notification clock; pack-SHA forensics. Co-authored with legal review (P0.3).
 - **P0.9 — CODEOWNERS hardening for compliance spaces [HIPAA] [OPS] [SIZE: S ~1h]** — Document and template a GitHub branch ruleset for `compliance: true` spaces: min-2-reviewers, admin bypass disabled, compliance-leads rotation policy. Treat any admin bypass as a break-glass audit event.
 
