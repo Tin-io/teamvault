@@ -40,3 +40,7 @@
 #   kingdom: your-org
 #   palace: another-product
 #   wing: frontend
+
+- remote: https://github.com/title21-CGT/teamvault.git
+  workspace: default
+
