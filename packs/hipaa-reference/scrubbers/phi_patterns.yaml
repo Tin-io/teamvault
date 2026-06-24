@@ -62,7 +62,14 @@ patterns:
 
   # ---- Contact info (PHI under §164.514) ----
   - name: email
-    pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    # Negative lookahead `(?!:\S)` rejects matches followed by `:<non-whitespace>` —
+    # which excludes SSH-URL forms (git@host:OWNER/REPO), bash glob patterns
+    # (git@host:*), and variable-interpolated SSH templates (git@host:${OWNER}/...).
+    # Trade-off (documented v0.1.x — closes ClickUp GAP 86baj9jqc): emails followed
+    # by `:<port>` like `user@host.com:8080/path` slip through as false-negatives.
+    # Uncommon in PHI-bearing contexts; the pack disclaims itself as a reference,
+    # not a compliance control (see packs/hipaa-reference/README.md).
+    pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b(?!:\S)'
     description: email address (PHI when associated with a patient)
 
   - name: us_phone
