@@ -305,6 +305,11 @@ def _open_fts(space: str) -> sqlite3.Connection:
         USING fts5(content_hash UNINDEXED, entry_path UNINDEXED, chunk_index UNINDEXED,
                    text, tokenize='porter unicode61');
         CREATE TABLE IF NOT EXISTS hashes(content_hash TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS access_counts(
+            content_hash TEXT PRIMARY KEY,
+            count INTEGER NOT NULL DEFAULT 0,
+            last_accessed TEXT
+        );
         """
     )
     return conn
@@ -376,6 +381,9 @@ def reindex_space(space: str) -> dict[str, int]:
             placeholders = ",".join("?" for _ in stale)
             fts.execute(f"DELETE FROM chunks WHERE content_hash IN ({placeholders})", stale)
             fts.execute(f"DELETE FROM hashes WHERE content_hash IN ({placeholders})", stale)
+            # P1.6: also purge access_counts so orphan rows don't accumulate.
+            # Safe because access_counts is part of _open_fts's schema.
+            fts.execute(f"DELETE FROM access_counts WHERE content_hash IN ({placeholders})", stale)
             fts.commit()
             try:
                 hash_list = ", ".join(f"'{h}'" for h in stale)

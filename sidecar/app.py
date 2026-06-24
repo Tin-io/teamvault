@@ -301,6 +301,11 @@ def search_endpoint(req: SearchRequest) -> SearchResponse:
                 "query_id": query_id,
                 "paths_returned": [h.get("path") for h in hits],
                 "top_scores": [round(float(h.get("score", 0.0)), 4) for h in hits],
+                # P1.6: scores are RRF × temporal-decay × access-boost.
+                # Tag is derived from the current DECAY_*/BOOST constants so
+                # retrospectives across a parameter bump can detect the
+                # regime shift without anyone updating a literal here.
+                "scoring_version": search_mod.SCORING_VERSION,
             },
         )
     except Exception as e:

@@ -69,6 +69,7 @@ Readiness probe distinct from `/healthz`. Returns 200 only when at least one spa
 
 - **Request:** `{"query": "<str>", "top_k": 10, "space": "<str | null>"}`
 - **Response:** `{"results": [{"path": "<rel-path>", "chunk": "<text>", "score": <float>, "metadata": {...}}]}`
+- **`score` semantics (P1.6):** RRF fusion of BM25 + vector ranks, multiplied by a temporal-decay factor (1.0× ≤30d, linear → 0.5× floor at 365d on the entry's `created` frontmatter) and a mild access-count boost (`1 + 0.07·ln(1+access_count)` for chunks delivered in prior top-K hits). Top-of-rank RRF fuses at ~`1/(RRF_K+1)` ≈ `0.0164`; with the access boost asymptote that yields a practical ceiling around `0.02–0.025` per hit (no hard upper bound). Monotonically non-increasing across the result list; **not stable across queries** because access counts change over time and decay advances daily. Audit-log records carry `scoring_version` derived from the active decay/boost constants (e.g., `"p1.6:fresh=30d,floor=365d@0.5,boost=0.07"`) so retrospectives can detect parameter drift across log entries.
 
 ### `POST /publish`
 
