@@ -30,6 +30,14 @@ Your team forks this repo as a "space" (or stays in this master template). Each 
 
 > 👥 **The model:** your team forks `tin-io/teamvault` into your org **once** (e.g. `your-org/teamvault-<team-name>`). That fork is your team's **space** — all KB entries, all pack config, all binds live there. Every teammate clones the **fork** (not master) and runs the sidecar against it. Master stays as the upstream you periodically pull updates from. The setup skill handles both the first-time-fork case and the joining-an-existing-fork case from the same paste-in below.
 
+```text
+tin-io/teamvault   ── fork once ─►   your-org/teamvault-<team>   ── clone per dev ─►   ~/teamvault-<team>/
+ (upstream code)                     (team SPACE: KB entries +                         (each dev's working
+                                      packs + space.yaml + repos.yaml)                  tree; sidecar watches)
+
+                   ◄── targeted upstream sync: code updates flow IN; your kb/ stays yours ──►
+```
+
 Paste this into Claude Code or Codex from inside the project repo you want to bind:
 
 ```
