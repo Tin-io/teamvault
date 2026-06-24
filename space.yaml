@@ -5,7 +5,7 @@
 #
 # THIS FILE IS THE TEMPLATE. Teams should fork and customize.
 
-name: teamvault-template
+name: teamvault
 description: TeamVault master template — fork to create your team space.
 
 # Light Palace taxonomy (Kingdom → Palace → Wing → Hall → Room + Tunnels).
