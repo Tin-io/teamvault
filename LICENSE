@@ -24,8 +24,30 @@ SOFTWARE.
 
 The `packs/hipaa-reference/` pack ships a starting-point set of PHI patterns
 for educational and reference use. It is NOT a HIPAA compliance control,
-certification, or substitute for a HIPAA Security Rule implementation. Teams
-using TeamVault to handle PHI-adjacent content must execute their own BAAs
-with all third parties (including GitHub if used as the substrate host) and
-maintain their own organizational HIPAA controls. The authors and
-contributors disclaim liability for PHI leaks via shipped patterns.
+NOT a certification, NOT legal advice, and NOT a substitute for a HIPAA
+Security Rule implementation. The pack's regex patterns were authored by
+software engineers, not by a compliance attorney or HIPAA-credentialed
+auditor.
+
+Teams using TeamVault to handle PHI-adjacent content must, before relying
+on this pack as any layer of defense:
+
+1. Have their own counsel review the regex set against their actual PHI
+   shapes and approve (or extend) it for their use case.
+2. Execute BAAs with EVERY third party their substrate touches (including
+   their git host, embedding-model provider, LLM provider, and any other
+   external service).
+3. Maintain organizational HIPAA Security Rule controls separately:
+   access controls, workforce training, audit-log retention, breach
+   response, and periodic risk assessments.
+4. Run periodic manual audit beyond automated pattern matching.
+
+The authors and contributors disclaim all liability for PHI leaks via
+the shipped patterns, for missed detections, for false negatives, for
+incidents arising from reliance on this pack, and for any compliance
+deficiency in any organization that enables this pack. The pack is
+provided AS-IS, without warranty of any kind.
+
+See [`packs/hipaa-reference/README.md`](packs/hipaa-reference/README.md)
+for the operational positioning and the "what you must do if you fork
+this" checklist.
