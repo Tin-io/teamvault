@@ -432,6 +432,110 @@ If `/teamvault-doctor` flags issues post-sync: `git reset --hard HEAD~1` + kicks
 
 Not shipped yet. When it lands: detects upstream delta, applies substrate paths automatically, prompts for reference-pack changes, runs sandbox tests, supports rollback. Use Pattern A for now.
 
+### 🔓 Alternative: fork-free clone (for orgs that need to obscure the upstream relationship)
+
+Most teams fork `tin-io/teamvault` into their org via GitHub's fork button. Some teams can't or won't — and that's a first-class supported path. Reasons we've heard:
+
+- **Compliance posture.** "Our repo metadata can't advertise a fork relationship pointing at an external repo."
+- **Org policy.** Some orgs prohibit GitHub-side fork relationships to repos outside the org.
+- **Brand / signaling.** "We don't want our space repo to read as 'a fork of someone else's project.'"
+
+These are real reasons, not edge cases. The pattern is: create a new empty repo in your org, push the master template contents into it, and treat it as your space — no GitHub fork relationship, but everything else (substrate sync, KB sharing, MCP, packs) works identically.
+
+#### What's kept vs. what's lost
+
+| | Fork-based (GitHub fork) | Fork-free (push to new empty repo) |
+|---|---|---|
+| Substrate code (`sidecar/`, skills, packs) | ✓ | ✓ |
+| Your KB entries, `space.yaml`, `repos.yaml`, custom packs | ✓ | ✓ |
+| Full git commit history (same SHAs as upstream) | ✓ | ✓ |
+| Sidecar pull-loop + push-on-publish (`vault_publish`) | ✓ | ✓ |
+| MCP tools, packs, pre-commit hook | ✓ | ✓ |
+| GitHub "X commits behind upstream" UI | ✓ | ✗ |
+| `gh repo sync` | ✓ | ✗ |
+| `git fetch upstream` + `git merge` / Pattern A targeted checkout | ✓ | ✓ (after one-time `git remote add upstream`) |
+
+The only thing lost is the GitHub-side fork relationship — which affects the web UI and `gh repo sync`, but does NOT affect raw git fetch/pull/merge. Upstream sync works identically; you just register `upstream` as a regular git remote.
+
+#### Setup from scratch — fork-free, one dev does this once
+
+```bash
+# 1. Create a new empty repo in your org via the GitHub UI (no README, no .gitignore, nothing)
+#    e.g., https://github.com/<your-org>/teamvault-<your-team>
+
+# 2. Clone the master template to a temp dir
+git clone https://github.com/tin-io/teamvault.git /tmp/teamvault-master
+cd /tmp/teamvault-master
+
+# 3. Repoint origin at your new empty repo and push
+git remote set-url origin https://github.com/<your-org>/teamvault-<your-team>.git
+git push -u origin main
+
+# 4. Move the working tree into the canonical location
+mv /tmp/teamvault-master ~/teamvault-<your-space>
+cd ~/teamvault-<your-space>
+
+# 5. Add upstream remote (the master template) for future syncs
+git remote add upstream https://github.com/tin-io/teamvault.git
+git remote -v   # confirm: origin = your new repo; upstream = tin-io/teamvault
+
+# 6. Run the targeted-path sync (Pattern A) to bring your fork-free copy up to upstream HEAD
+git fetch upstream
+git checkout upstream/main -- \
+  sidecar/ docs/ .github/ \
+  .claude/skills/teamvault-setup/ \
+  .claude/skills/teamvault-status/ \
+  .claude/skills/teamvault-publish/ \
+  .claude/skills/teamvault-review/ \
+  .claude/skills/teamvault-doctor/ \
+  README.md SETUP_PROMPT.md LICENSE
+git diff --staged
+git commit -m "chore(sync): upstream $(git rev-parse --short upstream/main)"
+git push   # to your new origin
+
+# 7. Every other dev on your team clones your new repo (NOT the master template), then adds upstream on their own machine
+#    See the next subsection for the three commands each teammate runs
+```
+
+From here, every dev runs `/teamvault-setup` against the new repo URL — the setup skill doesn't care whether the space is a GitHub fork or a fork-free clone; it just clones whatever URL you give it.
+
+#### Recovery flow — you already pushed to a new empty repo and want upstream sync
+
+If your team did the "push to new empty repo" path before reading this section (welcome — this is exactly the situation that prompted this doc), here's the three-command recovery. Run this on **one** dev's machine; everyone else just `git pull`s from origin afterward.
+
+```bash
+cd ~/teamvault-<your-space>
+
+# 1. Confirm origin points at your new repo
+git remote -v
+
+# 2. Add upstream — the master template
+git remote add upstream https://github.com/tin-io/teamvault.git
+
+# 3. Fetch and inspect the upstream delta
+git fetch upstream
+git log --oneline HEAD..upstream/main | head -20
+```
+
+If step 3 shows commits, run the same Pattern A targeted-path checkout above (the substrate paths list never includes `kb/`, `space.yaml`, `repos.yaml`, or customized pack files — so team-owned content is untouched), then commit and `git push` to your new origin. Every other dev pulls from origin and they're current.
+
+#### Per-clone caveat — `upstream` is a per-developer git config
+
+The `upstream` remote is a local-only git remote, stored in each clone's `.git/config`. It does NOT sync via `git push` — every dev needs to add it once on their own machine the first time they want to inspect upstream (`git fetch upstream`, `git log HEAD..upstream/main`).
+
+In practice:
+- **Only ONE dev per team needs to RUN the sync** (the targeted-path checkout + commit + push).
+- **Every dev who wants to inspect upstream locally** (`git log HEAD..upstream/main`) needs `git remote add upstream https://github.com/tin-io/teamvault.git` on their machine. Two seconds, one-time.
+- Once the syncing dev pushes the commit to origin, every other dev's `git pull` brings in the substrate updates without needing `upstream` configured at all.
+
+#### Coming soon: native handling in `/teamvault-upstream-sync`
+
+The forthcoming `/teamvault-upstream-sync` skill (ROADMAP P2.14) handles the fork-free case natively. Its first pre-flight check is "is the `upstream` remote registered?" — if not, it prompts:
+
+> Your space doesn't have an `upstream` remote. If your team is using a fork-free clone (pushed substrate to a new empty repo), I can add `https://github.com/tin-io/teamvault.git` as the upstream now. Add it? [Y/n]
+
+After that one-time prompt, fork-free teams get the same `/teamvault-upstream-sync` UX as forked teams — no special-casing, no documentation divergence.
+
 ### Anti-patterns
 
 - ❌ **`git merge upstream/main` (untargeted).** Conflicts on `space.yaml` (your kingdoms / packs choice vs upstream defaults), `repos.yaml` (your binds vs empty), and any customized pack files. Devs unfamiliar with git conflict resolution can silently clobber team config.
