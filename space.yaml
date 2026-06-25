@@ -19,8 +19,9 @@ description: TeamVault master template — fork to create your team space.
 kingdoms:
   - your-org
 
-compliance: false           # true → auto-deploy disabled; pack updates require /teamvault-apply-pack-update
+compliance: true            # true → auto-deploy disabled; pack updates require /teamvault-apply-pack-update
 enabled_packs:
-  - hipaa-reference         # example; remove if your team doesn't handle PHI
-  - clickup                 # example; remove if your team doesn't use ClickUp
+  - hipaa-reference         # PHI scrubbing + compliance reference
+  - clickup                 # ClickUp task linkage
+  - jira-linkage            # Jira issue linkage
 auto_deploy: true           # automatically apply pack updates within ~60s of git pull
