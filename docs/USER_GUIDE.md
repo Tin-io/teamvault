@@ -86,12 +86,23 @@ Packs extend it. Drop a `packs/hipaa-reference/` directory containing regex patt
 
 ### 🍎 Install on your Mac
 
+> 👥 **The fork model:** your team forks `tin-io/teamvault` into your org once — that fork is your team's **space**, where KB entries, pack config, and binds live. Every teammate clones the **fork** (not master) and runs the sidecar against it. The paste-in below clones master to `/tmp` ONLY so the agent can read the setup skill; the real working tree lands at `~/teamvault-<space-name>/` (cloned from your team's fork).
+
+```text
+tin-io/teamvault   ── fork once ─►   your-org/teamvault-<team>   ── clone per dev ─►   ~/teamvault-<team>/
+ (upstream code)                     (team SPACE: KB entries +                         (each dev's working
+                                      packs + space.yaml + repos.yaml)                  tree; sidecar watches)
+
+                   ◄── targeted upstream sync: code updates flow IN; your kb/ stays yours ──►
+```
+
 Inside the project repo you want to bind to your team's TeamVault space, paste this into your Claude Code session:
 
 ```
 Install TeamVault for this project.
 
-1. Clone the master template to a temp dir:
+1. Clone the master template to /tmp ONLY so the setup skill is readable
+   (this is NOT your working tree — just where the agent reads SKILL.md from):
    git clone https://github.com/tin-io/teamvault /tmp/teamvault-master
 
 2. Read /tmp/teamvault-master/.claude/skills/teamvault-setup/SKILL.md and execute it.
@@ -103,8 +114,6 @@ Install TeamVault for this project.
    - running the MCP `vault_status` tool and showing me the output
    - showing me a `vault_search` query result
 ```
-
-> 👥 **The fork model:** your team forks `tin-io/teamvault` into your org once — that fork is your team's **space**, where KB entries, pack config, and binds live. Every teammate clones the **fork** (not master) and runs the sidecar against it. The paste-in above clones master to `/tmp` ONLY so the agent can read the setup skill; the real working tree lands at `~/teamvault-<space-name>/` (cloned from your team's fork).
 
 The agent walks the install: forks tin-io/teamvault into your org if you don't have a fork yet OR clones the existing team fork if you do (asks 5 conversational questions — fork-flow, space URL, enabled packs, project bind, optional PR-workflow skills), installs the Python sidecar (FastAPI, LanceDB, SQLite FTS5, Nomic embedding), generates a launchd plist so the sidecar runs on boot, registers the MCP endpoint with Claude Code via `claude mcp add`, then smoke-tests `/healthz` (and `/readyz` once the first reindex completes).
 
